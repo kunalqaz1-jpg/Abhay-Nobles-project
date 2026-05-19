@@ -787,16 +787,16 @@ table.data-table {
   const contentWrap = document.getElementById('contentWrap');
 
   function persistSession(studentId, name) {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ studentId, name, ts: Date.now() }));
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ studentId, name, ts: Date.now() }));
   }
   function loadSession() {
     try {
-      const s = sessionStorage.getItem(SESSION_KEY);
+      const s = localStorage.getItem(SESSION_KEY);
       return s ? JSON.parse(s) : null;
     } catch (e) { return null; }
   }
   function clearSession() {
-    sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(SESSION_KEY);
   }
 
   function resolveApiBases() {
@@ -848,6 +848,20 @@ table.data-table {
     throw lastError || new Error('Unable to reach the student portal server.');
   }
 
+  // Function for Admin/Teacher to save data persistently
+  async function persistDataToBackend(type, payload) {
+    try {
+      const response = await apiFetch('/admin/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, payload })
+      });
+      return await response.json();
+    } catch (err) {
+      console.error("Failed to save data:", err);
+    }
+  }
+
   async function loginStudent(studentId, password) {
     const response = await apiFetch('/students/login', {
       method: 'POST',
@@ -869,8 +883,9 @@ table.data-table {
   async function showDashboard(session) {
     currentDashboardData = await fetchStudentDashboard(session.studentId);
     const student = currentDashboardData.student;
-    demoStudent.admission = student.studentId || '—';
-    document.getElementById('welcomeName').textContent = (student.fullName || session.name).split(' ')[0] || session.name;
+    if (!student) throw new Error("Could not load student profile.");
+
+    document.getElementById('welcomeName').textContent = (student.fullName || session.name).split(' ')[0];
 
     NAV.forEach((item, i) => {
       const b = document.createElement('button');
@@ -883,16 +898,15 @@ table.data-table {
     });
 
     renderAllPanels(session, currentDashboardData);
-    setTimeout(() => {
-      const student = currentDashboardData?.student || {};
-      hydrateStudentPanels(
-        currentDashboardData,
-        { fees: student.fees || { history: [] } },
-        currentDashboardData?.attendance?.summary || {},
-        currentDashboardData?.homework || null,
-        currentDashboardData?.result || null,
-      );
-    }, 0);
+
+    hydrateStudentPanels(
+      currentDashboardData,
+      student,
+      currentDashboardData.attendance || {},
+      currentDashboardData.homework || [],
+      currentDashboardData.result || null
+    );
+
     elLogin.style.display = 'none';
     elDash.classList.add('is-visible');
     selectPanel('profile', sidebarNav.querySelector('.nav-item'));
@@ -910,20 +924,15 @@ table.data-table {
   }
 
   function renderAllPanels(session, dashboardData) {
-    const student = dashboardData.student;
-    const attendance = dashboardData.attendance || {};
-    const attendanceSummary = attendance.summary || { percent: '0%', daysPresent: 0, daysAbsent: 0, weeklyRows: [], calendar: [], monthLabel: 'May 2026' };
-    const latestHomework = dashboardData.homework;
-    const latestResult = dashboardData.result;
-    const sname = student.fullName || demoStudent.name;
+    const student = dashboardData.student || {};
+    const sname = student.fullName || "Student";
     const PH = {
       name: sname,
-      klass: 'Class ' + student.className.replace('-', ' — Section '),
-      roll: student.rollNo,
-      photo: student.photo || demoStudent.photo,
-      admission: student.studentId,
-      parents: (student.parents || []).map(function (p) { return [p.relation, p.name, p.phone]; }),
-      fees: student.fees || demoStudent.fees
+      klass: student.className ? 'Class ' + student.className.replace('-', ' — Section ') : 'Unassigned',
+      roll: student.rollNo || '—',
+      photo: student.photo || './demo-student-profile.png',
+      admission: student.studentId || '—',
+      parents: (student.parents || []).map(function (p) { return [p.relation, p.name, p.phone]; })
     };
 
     contentWrap.innerHTML = `
@@ -963,9 +972,9 @@ table.data-table {
       <section class="panel-section" id="panel-attendance">
         <div class="section-heading">${NAV[1].icon}<h2>Attendance</h2></div>
         <div class="stat-row">
-          <div class="stat-chip"><div><figure>94%</figure><span>May 2026 — Present</span></div></div>
-          <div class="stat-chip"><div><figure>21</figure><span>Days Present</span></div></div>
-          <div class="stat-chip"><div><figure>2</figure><span>Days Absent</span></div></div>
+          <div class="stat-chip"><div><figure id="stat-percent">0%</figure><span>Attendance</span></div></div>
+          <div class="stat-chip"><div><figure id="stat-present">0</figure><span>Days Present</span></div></div>
+          <div class="stat-chip"><div><figure id="stat-absent">0</figure><span>Days Absent</span></div></div>
         </div>
         <div class="card-grid cols-2">
           <div class="dashboard-card">
@@ -973,19 +982,13 @@ table.data-table {
             <p style="margin-bottom:.75rem;font-size:.875rem;color:var(--slate);">Attendance is recorded daily. Contact class teacher for discrepancy.</p>
             <table class="data-table">
               <thead><tr><th>Week</th><th>Present</th><th>Absent</th></tr></thead>
-              <tbody>
-                <tr><td>W1 May</td><td>5</td><td>0</td></tr>
-                <tr><td>W2 May</td><td>5</td><td>1</td></tr>
-                <tr><td>W3 May</td><td>6</td><td>0</td></tr>
-                <tr><td>W4 May</td><td>5</td><td>1</td></tr>
-              </tbody>
+              <tbody id="attendance-weekly-body"></tbody>
             </table>
           </div>
           <div class="dashboard-card">
-            <h3>Calendar — May 2026</h3>
-            <div class="calendar-mini">
+            <h3 id="attendance-calendar-title">Monthly Calendar</h3>
+            <div class="calendar-mini" id="attendance-calendar-grid">
               ${['S','M','T','W','T','F','S'].map(d=>`<div class="calendar-mini-head">${d}</div>`).join('')}
-              ${calendarCells()}
             </div>
             <p style="margin-top:.85rem;font-size:.75rem;color:var(--slate);">● Green Present · ● Red Absent · Gray weekends</p>
           </div>
@@ -999,12 +1002,7 @@ table.data-table {
           <h3>Assigned work</h3>
           <table class="data-table">
             <thead><tr><th>Subject</th><th>Task</th><th>Due Date</th><th>Status</th></tr></thead>
-            <tbody>
-              <tr><td>Mathematics</td><td>Ch. 5 — Exercises 12–18</td><td>6 May</td><td><span class="tag pending">Pending</span></td></tr>
-              <tr><td>Science</td><td>Lab report — Electrolysis</td><td>8 May</td><td><span class="tag ok">Submitted</span></td></tr>
-              <tr><td>English</td><td>Essay — Environmental Awareness (500 words)</td><td>10 May</td><td><span class="tag pending">Pending</span></td></tr>
-              <tr><td>Social Studies</td><td>Map work — Climate zones</td><td>5 May</td><td><span class="tag ok">Submitted</span></td></tr>
-            </tbody>
+            <tbody id="homework-body"></tbody>
           </table>
           <div class="upload-zone">
             <label for="hw-upload">📎 Submit assignment — choose file</label>
