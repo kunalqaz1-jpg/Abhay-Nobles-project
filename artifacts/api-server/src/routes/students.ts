@@ -105,21 +105,11 @@ async function getStudentDashboard(studentId: string) {
     (r.entries as { studentId: string }[]).some((e) => e.studentId === studentId)
   );
 
-  const latestHomework = await db
-    .select()
-    .from(homeworkTable)
-    .where(eq(homeworkTable.className, s.className))
-    .orderBy(desc(homeworkTable.createdAt))
-    .limit(1);
-
-  const latestResult = await db
-    .select()
-    .from(resultsTable)
-    .where(eq(resultsTable.className, s.className))
-    .orderBy(desc(resultsTable.createdAt))
-    .limit(1);
-
-  const [notices, materials, timetable, events, messages] = await Promise.all([
+  const [homeworkRecords, noticesRaw, materials, timetable, events, messages] = await Promise.all([
+    db.select().from(homeworkTable)
+      .where(eq(homeworkTable.className, s.className))
+      .orderBy(desc(homeworkTable.createdAt))
+      .limit(10),
     db.select().from(noticesTable)
       .orderBy(desc(noticesTable.createdAt))
       .limit(20),
@@ -139,34 +129,64 @@ async function getStudentDashboard(studentId: string) {
       .limit(20),
   ]);
 
+  const summary = buildAttendanceSummary(filteredAttendance, studentId);
+
+  const filteredNotices = noticesRaw.filter(
+    (n) => n.audience === "All Classes" || n.className === s.className || n.audience === s.className
+  );
+  const filteredEvents = events.filter((e) => e.className === "All Classes" || e.className === s.className);
+  const filteredMessages = messages.filter(
+    (m) => m.audience === "all-students" || m.className === s.className || m.studentId === studentId
+  );
+
+  function fmtDate(iso: string | null | undefined) {
+    if (!iso) return "";
+    try { return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" }); }
+    catch { return iso; }
+  }
+
   return {
     student: sanitizeStudent(s as unknown as Record<string, unknown>),
     attendance: {
-      latest: filteredAttendance[0]
-        ? {
-            date: filteredAttendance[0].date,
-            teacherName: filteredAttendance[0].teacherName,
-            entry: (filteredAttendance[0].entries as { studentId: string; status: string }[]).find(
-              (e) => e.studentId === studentId
-            ) || null,
-          }
-        : null,
-      summary: buildAttendanceSummary(filteredAttendance, studentId),
+      classWise: {
+        className: `${s.className}-${s.section}`,
+        weeks: summary.weeklyRows,
+        calendarDays: summary.calendar,
+      },
+      summary,
     },
-    homework: latestHomework,
-    result: latestResult[0] || null,
-    notices: notices.filter(
-      (n) => n.audience === "All Classes" || n.className === s.className || n.audience === s.className
-    ),
-    materials,
-    timetable,
-    events: events.filter((e) => e.className === "All Classes" || e.className === s.className),
-    messages: messages.filter(
-      (m) =>
-        m.audience === "all-students" ||
-        m.className === s.className ||
-        m.studentId === studentId
-    ),
+    homework: homeworkRecords.map((h) => ({
+      subject: h.subject,
+      title: h.title,
+      dueDate: h.dueDate,
+      status: "Pending",
+    })),
+    result: null,
+    notices: filteredNotices.map((n) => ({
+      title: n.title,
+      type: n.audience === "All Classes" ? "General" : "Alert",
+      date: fmtDate(n.createdAt ?? n.dbCreatedAt?.toISOString() ?? ""),
+    })),
+    materials: materials.map((m) => ({
+      title: m.title,
+      type: m.resourceType || "File",
+    })),
+    timetable: timetable.map((t) => ({
+      period: t.period,
+      time: t.time,
+      subject: t.subject,
+    })),
+    events: filteredEvents.map((e) => ({
+      name: e.title,
+      detail: e.description || "",
+      date: e.eventDate,
+    })),
+    messages: filteredMessages.map((m) => ({
+      from: m.teacherName || "School Office",
+      subject: m.subject,
+      date: fmtDate(m.sentAt),
+      body: m.body,
+    })),
   };
 }
 
