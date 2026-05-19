@@ -1,0 +1,639 @@
+import { useEffect, useRef, useState } from "react";
+import { Link } from "wouter";
+
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || "/api";
+
+async function apiFetch(path: string, init?: RequestInit) {
+  const res = await fetch(API_BASE + path, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || "Request failed");
+  return data;
+}
+
+const NAV = [
+  { id: "profile", label: "Profile", icon: <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> },
+  { id: "attendance", label: "Attendance", icon: <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> },
+  { id: "homework", label: "Homework", icon: <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><path d="M8 7h8M8 11h8"/></svg> },
+  { id: "results", label: "Results", icon: <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg> },
+  { id: "fees", label: "Fees", icon: <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><path d="M1 10h22"/></svg> },
+  { id: "notices", label: "Notices", icon: <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg> },
+  { id: "material", label: "Study Material", icon: <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg> },
+  { id: "timetable", label: "Timetable", icon: <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> },
+  { id: "events", label: "Events", icon: <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> },
+  { id: "messages", label: "Messages", icon: <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> },
+];
+
+type DashboardData = {
+  student: {
+    studentId: string;
+    fullName: string;
+    className: string;
+    section: string;
+    rollNo: string;
+    photo: string;
+    parents: { relation: string; name: string; phone: string }[];
+    fees: { currentTermStatus: string; currentTermNote: string; nextDueAmount: string; nextDueLabel: string; history: { period: string; amount: string; status: string }[] };
+  };
+  attendance: { classWise: { className: string; weeks: { week: string; present: number; absent: number }[]; calendarDays: { day: number; status: string; offset?: number }[] } } | null;
+  homework: { subject: string; title: string; dueDate: string; status: string }[];
+  result: { subject: string; max: number; obtained: number; grade: string }[] | null;
+  notices: { title: string; type: string; date: string }[];
+  materials: { title: string; type: string }[];
+  timetable: { period: string; time: string; subject: string }[];
+  events: { name: string; detail: string; date: string }[];
+  messages: { from: string; subject: string; date: string; body: string }[];
+};
+
+const FALLBACK_DATA: DashboardData = {
+  student: {
+    studentId: "AN2024-0842",
+    fullName: "Aarav Sharma",
+    className: "X",
+    section: "A",
+    rollNo: "18",
+    photo: "/demo-student-profile.png",
+    parents: [
+      { relation: "Father", name: "Rajesh Sharma", phone: "+91 98765 41230" },
+      { relation: "Mother", name: "Priya Sharma", phone: "+91 98765 41231" },
+    ],
+    fees: {
+      currentTermStatus: "Paid",
+      currentTermNote: "Quarterly installment for Apr–Jun 2026 received.",
+      nextDueAmount: "₹ 12,400",
+      nextDueLabel: "July 2026",
+      history: [
+        { period: "Jan–Mar 2026", amount: "₹ 12,400", status: "Paid" },
+        { period: "Oct–Dec 2025", amount: "₹ 12,400", status: "Paid" },
+        { period: "Jul–Sep 2025", amount: "₹ 12,200", status: "Paid" },
+      ],
+    },
+  },
+  attendance: {
+    classWise: {
+      className: "X-A",
+      weeks: [
+        { week: "W1 May", present: 5, absent: 0 },
+        { week: "W2 May", present: 4, absent: 1 },
+        { week: "W3 May", present: 5, absent: 0 },
+        { week: "W4 May", present: 4, absent: 1 },
+      ],
+      calendarDays: [],
+    },
+  },
+  homework: [
+    { subject: "Mathematics", title: "Algebra problem set", dueDate: "12 May", status: "Pending" },
+    { subject: "Science", title: "Ray optics worksheet", dueDate: "14 May", status: "Submitted" },
+    { subject: "English", title: "Essay draft — My Hero", dueDate: "16 May", status: "Pending" },
+  ],
+  result: [
+    { subject: "English", max: 100, obtained: 82, grade: "A" },
+    { subject: "Hindi", max: 100, obtained: 88, grade: "A+" },
+    { subject: "Mathematics", max: 100, obtained: 91, grade: "A+" },
+    { subject: "Science", max: 100, obtained: 86, grade: "A" },
+    { subject: "Social Studies", max: 100, obtained: 79, grade: "A" },
+  ],
+  notices: [
+    { title: "School closed — Eid-ul-Fitr (regional)", type: "Holiday", date: "4 May" },
+    { title: "Final practical exam timetable published", type: "Alert", date: "28 Apr" },
+    { title: "Parent–Teacher Meet — Sat 28 June, 10 AM", type: "PTM", date: "27 Apr" },
+  ],
+  materials: [
+    { title: "NCERT Science — Term II (PDF)", type: "Notes" },
+    { title: "Maths — Important questions set", type: "Questions" },
+    { title: "Syllabus — Class X RBSE", type: "Syllabus" },
+  ],
+  timetable: [
+    { period: "I", time: "8:00 – 8:45", subject: "English" },
+    { period: "II", time: "8:45 – 9:30", subject: "Mathematics" },
+    { period: "Break", time: "9:30 – 9:50", subject: "—" },
+    { period: "III", time: "9:50 – 10:35", subject: "Science" },
+    { period: "IV", time: "10:35 – 11:20", subject: "Social Studies" },
+    { period: "V", time: "11:35 – 12:20", subject: "Hindi" },
+    { period: "VI", time: "12:20 – 1:05", subject: "Sports / Activities" },
+  ],
+  events: [
+    { name: "Science Exhibition", detail: "Registered — Stall B4", date: "12 June" },
+    { name: "Inter-school Debate", detail: "Team reserve", date: "22 May" },
+    { name: "Sports Day", detail: "100m heats — Participant", date: "Late June" },
+  ],
+  messages: [
+    { from: "Ms. Neha Sharma (Maths)", subject: "Homework reminder", date: "8 May", body: "Please submit the algebra problem set by 12 May." },
+    { from: "School Office", subject: "Fee receipt", date: "5 May", body: "Your fee payment for Apr–Jun 2026 has been received. Thank you." },
+  ],
+};
+
+export default function StudentPortal() {
+  const [view, setView] = useState<"login" | "dashboard">("login");
+  const [activePanel, setActivePanel] = useState("profile");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [studentId, setStudentId] = useState("");
+  const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(false);
+  const [loginError, setLoginError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [dashData, setDashData] = useState<DashboardData | null>(null);
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [welcomeName, setWelcomeName] = useState("Student");
+  const hwFileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("abhay_student_session");
+    if (saved) {
+      try {
+        const sess = JSON.parse(saved) as { studentId: string; name: string };
+        setWelcomeName(sess.name.split(" ")[0]);
+        loadDashboard(sess.studentId);
+      } catch {
+        localStorage.removeItem("abhay_student_session");
+      }
+    }
+    const rid = localStorage.getItem("abhay_student_remember_id");
+    if (rid) setStudentId(rid);
+  }, []);
+
+  async function loadDashboard(sid: string) {
+    try {
+      const data = await apiFetch(`/students/${encodeURIComponent(sid)}/dashboard`);
+      setDashData(data as DashboardData);
+      setWelcomeName((data.student?.fullName || "Student").split(" ")[0]);
+    } catch {
+      setDashData(FALLBACK_DATA);
+    }
+    setView("dashboard");
+  }
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setLoginError("");
+    setLoading(true);
+    try {
+      const data = await apiFetch("/students/login", {
+        method: "POST",
+        body: JSON.stringify({ studentId: studentId.trim(), password }),
+      });
+      localStorage.setItem("abhay_student_session", JSON.stringify({ studentId: studentId.trim(), name: data.student?.fullName || studentId }));
+      if (remember) localStorage.setItem("abhay_student_remember_id", studentId.trim());
+      setWelcomeName((data.student?.fullName || studentId).split(" ")[0]);
+      await loadDashboard(studentId.trim());
+    } catch {
+      if (studentId.trim() === "AN2024-0842" && password === "1234") {
+        localStorage.setItem("abhay_student_session", JSON.stringify({ studentId: "AN2024-0842", name: "Aarav Sharma" }));
+        if (remember) localStorage.setItem("abhay_student_remember_id", "AN2024-0842");
+        setDashData(FALLBACK_DATA);
+        setWelcomeName("Aarav");
+        setView("dashboard");
+      } else {
+        setLoginError("Invalid Student ID or password. Demo: AN2024-0842 / 1234");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleLogout() {
+    localStorage.removeItem("abhay_student_session");
+    setView("login");
+    setDashData(null);
+    setActivePanel("profile");
+    setPassword("");
+  }
+
+  const student = dashData?.student || FALLBACK_DATA.student;
+  const klass = student.className ? `Class ${student.className} — Section ${student.section}` : "Unassigned";
+
+  if (view === "login") {
+    return (
+      <>
+        <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+        <style>{`
+          :root {
+            --navy: #0B1628; --navy-mid: #132040; --navy-light: #1E3060;
+            --gold: #C9A84C; --gold-light: #E2C97E; --cream: #FAF7F0;
+            --white: #FFFFFF; --slate: #64748B; --radius: 14px; --radius-sm: 8px;
+            --font-display: 'Cormorant Garamond', serif; --font-body: 'Outfit', sans-serif;
+          }
+          .sp-login-wrap *, .sp-login-wrap *::before, .sp-login-wrap *::after { box-sizing: border-box; margin: 0; padding: 0; }
+          .sp-login-wrap { font-family: var(--font-body); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem 1rem; position: relative; isolation: isolate; }
+          .sp-login-bg { position: fixed; inset: 0; z-index: -1; background: linear-gradient(135deg, #060e1e 0%, #0B1628 35%, #132040 100%); overflow: hidden; }
+          .sp-login-bg::before { content: ''; position: absolute; inset: -50%; background: radial-gradient(ellipse at 30% 20%, rgba(201,168,76,0.15) 0%, transparent 50%), radial-gradient(ellipse at 70% 80%, rgba(30,48,96,0.5) 0%, transparent 45%); animation: bgDrift 18s ease-in-out infinite alternate; }
+          .sp-login-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(201,168,76,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(201,168,76,0.05) 1px, transparent 1px); background-size: 48px 48px; mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 20%, transparent 75%); pointer-events: none; }
+          @keyframes bgDrift { 0% { transform: translate(0, 0) rotate(0deg); } 100% { transform: translate(-4%, 3%) rotate(2deg); } }
+          .sp-orb { position: absolute; border-radius: 50%; filter: blur(64px); animation: orbFloat 10s ease-in-out infinite; pointer-events: none; }
+          .sp-orb-1 { width: 320px; height: 320px; background: rgba(201,168,76,0.12); top: 15%; left: 10%; }
+          .sp-orb-2 { width: 280px; height: 280px; background: rgba(62,106,173,0.2); bottom: 12%; right: 8%; animation-delay: -5s; }
+          @keyframes orbFloat { 0%, 100% { transform: translate(0, 0); opacity: 0.85; } 50% { transform: translate(24px, -20px); opacity: 1; } }
+          .sp-back { position: fixed; top: 1.25rem; left: 1.25rem; z-index: 2; font-size: 0.85rem; color: rgba(255,255,255,0.55); display: flex; align-items: center; gap: 0.35rem; transition: color 0.2s; font-family: var(--font-body); text-decoration: none; }
+          .sp-back:hover { color: var(--gold-light); }
+          .sp-card { width: 100%; max-width: 420px; background: rgba(255,255,255,0.06); border: 1px solid rgba(201,168,76,0.22); border-radius: calc(var(--radius) + 4px); padding: 2.25rem 2rem; backdrop-filter: blur(20px); box-shadow: 0 24px 80px rgba(0,0,0,0.35); animation: cardIn 0.6s ease forwards; opacity: 0; transform: translateY(14px); }
+          @keyframes cardIn { to { opacity: 1; transform: translateY(0); } }
+          .sp-brand { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 1.75rem; }
+          .sp-brand img { width: 76px; height: 76px; border-radius: 16px; object-fit: cover; border: 2px solid rgba(255,255,255,0.25); margin-bottom: 0.85rem; background: var(--cream); }
+          .sp-brand h1 { font-family: var(--font-display); font-size: 1.65rem; font-weight: 700; color: var(--white); line-height: 1.15; }
+          .sp-brand span { font-size: 0.7rem; color: var(--gold-light); letter-spacing: 0.12em; text-transform: uppercase; margin-top: 0.35rem; font-weight: 500; display: block; }
+          .sp-subtitle { text-align: center; color: rgba(255,255,255,0.55); font-size: 0.9rem; margin-bottom: 1.5rem; }
+          .sp-group { margin-bottom: 1.1rem; }
+          .sp-group label { display: block; font-size: 0.78rem; font-weight: 600; color: rgba(255,255,255,0.75); margin-bottom: 0.45rem; letter-spacing: 0.03em; }
+          .sp-group input { width: 100%; padding: 0.75rem 1rem; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.2); color: var(--white); font-size: 0.95rem; font-family: var(--font-body); transition: border-color 0.2s, box-shadow 0.2s; outline: none; }
+          .sp-group input::placeholder { color: rgba(255,255,255,0.35); }
+          .sp-group input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(201,168,76,0.15); }
+          .sp-row-extras { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.65rem; margin-bottom: 1.35rem; }
+          .sp-remember { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: rgba(255,255,255,0.7); cursor: pointer; user-select: none; }
+          .sp-remember input { width: 16px; height: 16px; accent-color: var(--gold); }
+          .sp-forgot { font-size: 0.85rem; font-weight: 500; color: var(--gold-light); background: none; border: none; cursor: pointer; font-family: inherit; padding: 0; }
+          .sp-btn-login { width: 100%; padding: 0.92rem; border-radius: 999px; font-size: 0.95rem; font-weight: 700; color: var(--navy); background: linear-gradient(135deg, var(--gold), var(--gold-light)); border: none; cursor: pointer; transition: transform 0.25s, box-shadow 0.25s; margin-bottom: 1rem; font-family: var(--font-body); }
+          .sp-btn-login:hover { transform: translateY(-2px); box-shadow: 0 12px 36px rgba(201,168,76,0.35); }
+          .sp-btn-login:disabled { opacity: 0.7; cursor: not-allowed; }
+          .sp-footer-links { text-align: center; padding-top: 0.75rem; border-top: 1px solid rgba(255,255,255,0.08); font-size: 0.875rem; color: rgba(255,255,255,0.55); }
+          .sp-footer-links a { color: var(--gold-light); font-weight: 600; }
+          .sp-hint { margin-top: 1rem; font-size: 0.72rem; color: rgba(255,255,255,0.35); text-align: center; }
+          .sp-error { color: #fca5a5; font-size: 0.82rem; text-align: center; margin-bottom: 0.75rem; }
+        `}</style>
+        <div className="sp-login-wrap">
+          <div className="sp-login-bg"><div className="sp-login-grid" /></div>
+          <div className="sp-orb sp-orb-1" />
+          <div className="sp-orb sp-orb-2" />
+          <Link href="/" className="sp-back">← Back to school website</Link>
+          <div className="sp-card">
+            <div className="sp-brand">
+              <img src="/school-logo.jpg" alt="School logo" />
+              <h1>Shri Abhay Nobles</h1>
+              <span>Student Portal</span>
+            </div>
+            <p className="sp-subtitle">Sign in with your Admission Number and password.</p>
+            {loginError && <p className="sp-error">{loginError}</p>}
+            <form onSubmit={handleLogin} noValidate>
+              <div className="sp-group">
+                <label htmlFor="sp-sid">Student ID / Admission Number</label>
+                <input id="sp-sid" type="text" placeholder="e.g. AN2024-0842" value={studentId} onChange={(e) => setStudentId(e.target.value)} autoComplete="username" required />
+              </div>
+              <div className="sp-group">
+                <label htmlFor="sp-pw">Password</label>
+                <input id="sp-pw" type="password" placeholder="Enter password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
+              </div>
+              <div className="sp-row-extras">
+                <label className="sp-remember">
+                  <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+                  Remember Me
+                </label>
+                <button type="button" className="sp-forgot" onClick={() => setForgotOpen(true)}>Forgot Password?</button>
+              </div>
+              <button type="submit" className="sp-btn-login" disabled={loading}>{loading ? "Signing in…" : "Login"}</button>
+              <div className="sp-footer-links">
+                Need assistance? <a href="mailto:office@abhaynobles.edu">Help / Contact School</a>
+              </div>
+            </form>
+            <p className="sp-hint">Demo login: use <strong>AN2024-0842</strong> and password <strong>1234</strong>.</p>
+          </div>
+
+          {/* Forgot modal */}
+          {forgotOpen && (
+            <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(15,28,53,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", backdropFilter: "blur(6px)" }}>
+              <div style={{ background: "var(--white)", padding: "1.75rem", borderRadius: "var(--radius)", maxWidth: 380, width: "100%" }}>
+                <h3 style={{ fontFamily: "var(--font-display)", marginBottom: "0.75rem", color: "var(--navy)" }}>Reset password</h3>
+                <p style={{ fontSize: "0.9rem", color: "var(--slate)", marginBottom: "1rem" }}>Contact the school office with your Admission Number for a reset link or temporary password.</p>
+                <p style={{ fontSize: "0.9rem", color: "var(--slate)", marginBottom: 0 }}><strong>School:</strong> <a href="tel:+911234567890">+91 12345 67890</a></p>
+                <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end", marginTop: "1rem" }}>
+                  <button type="button" style={{ padding: "0.55rem 1rem", borderRadius: 10, fontWeight: 600, fontSize: "0.85rem", background: "#f1f5f9", color: "var(--navy)", border: "1px solid rgba(11,22,40,0.08)", cursor: "pointer", fontFamily: "inherit" }} onClick={() => setForgotOpen(false)}>Close</button>
+                  <a href="mailto:office@abhaynobles.edu" style={{ padding: "0.55rem 1rem", borderRadius: 10, fontWeight: 600, fontSize: "0.85rem", background: "var(--navy)", color: "var(--white)", display: "inline-flex", alignItems: "center", textDecoration: "none" }}>Email Office</a>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+      <style>{`
+        :root {
+          --navy: #0B1628; --navy-mid: #132040; --navy-light: #1E3060;
+          --gold: #C9A84C; --gold-light: #E2C97E; --cream: #FAF7F0;
+          --white: #FFFFFF; --slate: #64748B; --green: #0d9488; --red: #dc2626;
+          --surface: #f1f5f9; --border: rgba(11,22,40,0.08); --radius: 14px;
+          --sidebar-w: 260px; --font-display: 'Cormorant Garamond', serif; --font-body: 'Outfit', sans-serif;
+        }
+        .sp-dash *, .sp-dash *::before, .sp-dash *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        .sp-dash { font-family: var(--font-body); color: #334155; background: var(--cream); line-height: 1.55; min-height: 100vh; display: grid; grid-template-columns: var(--sidebar-w) 1fr; }
+        .sp-sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 99; }
+        .sp-sidebar { position: sticky; top: 0; align-self: start; height: 100vh; background: var(--navy); color: rgba(255,255,255,0.82); padding: 1.25rem 0; border-right: 1px solid rgba(201,168,76,0.12); display: flex; flex-direction: column; z-index: 100; transition: transform 0.35s; }
+        .sp-brand { padding: 0 1.1rem 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; gap: 0.75rem; }
+        .sp-brand img { width: 44px; height: 44px; border-radius: 10px; object-fit: cover; border: 2px solid rgba(255,255,255,0.15); background: var(--cream); }
+        .sp-brand h2 { font-family: var(--font-display); font-size: 1.1rem; font-weight: 700; color: var(--white); line-height: 1.2; }
+        .sp-brand span { font-size: 0.65rem; color: var(--gold-light); opacity: 0.9; letter-spacing: 0.08em; display: block; }
+        .sp-nav { flex: 1; overflow-y: auto; padding: 1rem 0.65rem; margin-top: 0.75rem; }
+        .sp-nav-item { display: flex; align-items: center; gap: 0.65rem; padding: 0.72rem 0.85rem; margin-bottom: 0.25rem; border-radius: 10px; font-size: 0.88rem; font-weight: 500; color: rgba(255,255,255,0.7); transition: background 0.2s, color 0.2s; cursor: pointer; border: none; background: transparent; width: 100%; text-align: left; font-family: inherit; }
+        .sp-nav-item svg { width: 20px; height: 20px; flex-shrink: 0; }
+        .sp-nav-item:hover { background: rgba(255,255,255,0.06); color: var(--white); }
+        .sp-nav-item.active { background: linear-gradient(90deg, rgba(201,168,76,0.2), rgba(201,168,76,0.05)); color: var(--gold-light); border-left: 3px solid var(--gold); padding-left: calc(0.85rem - 3px); }
+        .sp-main { min-height: 100vh; background: var(--surface); }
+        .sp-topbar { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.95rem 1.5rem; background: rgba(248,250,252,0.92); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+        .sp-menu-toggle { display: none; padding: 0.55rem; border-radius: 10px; background: var(--white); border: 1px solid var(--border); color: var(--navy); cursor: pointer; }
+        .sp-welcome { font-size: 0.92rem; color: var(--slate); }
+        .sp-welcome strong { color: var(--navy); font-weight: 600; }
+        .sp-btn-logout { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.55rem 1.15rem; border-radius: 999px; font-size: 0.82rem; font-weight: 600; color: var(--navy); background: linear-gradient(135deg, var(--gold-light), var(--gold)); box-shadow: 0 4px 16px rgba(201,168,76,0.25); border: none; cursor: pointer; transition: transform 0.25s, box-shadow 0.25s; font-family: inherit; flex-shrink: 0; }
+        .sp-btn-logout:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(201,168,76,0.35); }
+        .sp-content { padding: 1.5rem clamp(1rem, 3vw, 2rem) 3rem; max-width: 1200px; }
+        .sp-panel { animation: spFade 0.45s ease forwards; }
+        @keyframes spFade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .sp-section-head { display: flex; align-items: center; gap: 0.65rem; margin-bottom: 1.35rem; }
+        .sp-section-head svg { width: 28px; height: 28px; color: var(--navy-light); }
+        .sp-section-head h2 { font-family: var(--font-display); font-size: clamp(1.45rem, 3vw, 1.85rem); font-weight: 700; color: var(--navy); }
+        .sp-card-grid { display: grid; gap: 1.25rem; }
+        .sp-card-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+        .sp-card { background: var(--white); border-radius: var(--radius); border: 1px solid var(--border); padding: 1.25rem 1.35rem; box-shadow: 0 4px 24px rgba(11,22,40,0.04); }
+        .sp-card h3 { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--slate); margin-bottom: 0.85rem; }
+        .sp-tag { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 6px; font-size: 0.72rem; font-weight: 600; }
+        .sp-tag.ok { background: #ccfbf1; color: #0f766e; }
+        .sp-tag.pending { background: #fef3c7; color: #b45309; }
+        .sp-tag.bad { background: #fee2e2; color: #b91c1c; }
+        .sp-table { width: 100%; border-collapse: collapse; font-size: 0.855rem; }
+        .sp-table th, .sp-table td { text-align: left; padding: 0.65rem 0.85rem; border-bottom: 1px solid var(--border); }
+        .sp-table th { font-weight: 600; color: var(--navy); background: var(--surface); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em; }
+        .sp-profile-hero { display: grid; gap: 1.35rem; }
+        @media (min-width: 720px) { .sp-profile-hero { grid-template-columns: auto 1fr; align-items: start; } }
+        .sp-avatar-ring { display: inline-block; padding: 5px; border-radius: 50%; background: linear-gradient(145deg, var(--gold), var(--gold-light), rgba(30,48,96,0.35)); box-shadow: 0 14px 40px rgba(11,22,40,0.14); }
+        .sp-avatar-crop { width: min(200px, 78vw); height: min(200px, 78vw); border-radius: 50%; overflow: hidden; border: 4px solid var(--white); background: var(--surface); }
+        .sp-avatar-crop img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 26%; transform: scale(1.12); transform-origin: 50% 32%; display: block; }
+        .sp-profile-caption { display: block; margin-top: 0.85rem; font-size: 0.78rem; font-weight: 600; color: var(--navy); text-align: center; }
+        .sp-profile-caption small { display: block; margin-top: 0.2rem; font-weight: 500; color: var(--slate); font-size: 0.72rem; }
+        .sp-profile-fields { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+        .sp-field-cell { padding: 0.75rem; background: var(--surface); border-radius: 10px; font-size: 0.875rem; }
+        .sp-field-dt { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--slate); margin-bottom: 0.2rem; }
+        .sp-field-dd { font-weight: 600; color: var(--navy); }
+        .sp-stat-row { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.25rem; }
+        .sp-stat-chip { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.85rem 1.1rem; background: var(--white); border-radius: 12px; border: 1px solid var(--border); }
+        .sp-stat-chip figure { font-size: 1.75rem; font-weight: 700; color: var(--navy); font-family: var(--font-display); line-height: 1; }
+        .sp-stat-chip span { font-size: 0.78rem; color: var(--slate); }
+        .sp-tslot { display: flex; justify-content: space-between; align-items: baseline; padding: 0.65rem; margin-bottom: 0.35rem; background: var(--surface); border-radius: 8px; font-size: 0.88rem; }
+        .sp-tslot strong { color: var(--navy); }
+        .sp-msg-item { padding: 0.85rem 1rem; margin-bottom: 0.65rem; background: var(--white); border-radius: 10px; border: 1px solid var(--border); border-left: 3px solid var(--gold); font-size: 0.88rem; }
+        .sp-msg-meta { font-size: 0.72rem; color: var(--slate); display: block; margin-bottom: 0.35rem; }
+        .sp-upload-zone { border: 2px dashed rgba(11,22,40,0.15); border-radius: var(--radius); padding: 1.35rem; text-align: center; margin-top: 0.85rem; background: rgba(255,255,255,0.6); }
+        .sp-upload-zone label { cursor: pointer; color: var(--navy-light); font-weight: 600; font-size: 0.875rem; }
+        .sp-btn-mini { padding: 0.55rem 1rem; border-radius: 10px; font-weight: 600; font-size: 0.85rem; background: var(--navy); color: var(--white); border: none; cursor: pointer; font-family: inherit; }
+        @media (max-width: 900px) {
+          .sp-dash { grid-template-columns: 1fr; }
+          .sp-sidebar { position: fixed; width: min(288px, 88vw); transform: translateX(-100%); box-shadow: 8px 0 40px rgba(0,0,0,0.25); }
+          .sp-sidebar.open { transform: translateX(0); }
+          .sp-sidebar-overlay.open { display: block; }
+          .sp-menu-toggle { display: inline-flex; }
+          .sp-card-grid.cols-2 { grid-template-columns: 1fr; }
+        }
+      `}</style>
+      <div className="sp-dash">
+        <div className={`sp-sidebar-overlay ${sidebarOpen ? "open" : ""}`} onClick={() => setSidebarOpen(false)} />
+        <aside className={`sp-sidebar ${sidebarOpen ? "open" : ""}`}>
+          <div className="sp-brand">
+            <img src="/school-logo.jpg" alt="" />
+            <div>
+              <h2>Portal</h2>
+              <span>Shri Abhay Nobles</span>
+            </div>
+          </div>
+          <nav className="sp-nav">
+            {NAV.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`sp-nav-item ${activePanel === item.id ? "active" : ""}`}
+                onClick={() => { setActivePanel(item.id); setSidebarOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <div className="sp-main">
+          <header className="sp-topbar">
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+              <button type="button" className="sp-menu-toggle" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+                <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h14M4 12h14M4 17h14" /></svg>
+              </button>
+              <p className="sp-welcome">Welcome back, <strong>{welcomeName}</strong></p>
+            </div>
+            <button type="button" className="sp-btn-logout" onClick={handleLogout}>
+              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" /></svg>
+              Logout
+            </button>
+          </header>
+
+          <div className="sp-content">
+            {activePanel === "profile" && (
+              <div className="sp-panel">
+                <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><h2>Profile</h2></div>
+                <div className="sp-card sp-profile-hero">
+                  <div style={{ textAlign: "center" }}>
+                    <div className="sp-avatar-ring">
+                      <div className="sp-avatar-crop">
+                        <img src={student.photo || "/demo-student-profile.png"} alt={student.fullName} width="200" height="200" />
+                      </div>
+                    </div>
+                    <span className="sp-profile-caption">{student.fullName}<small>Profile photo · demo</small></span>
+                  </div>
+                  <div>
+                    <h3 style={{ marginBottom: ".75rem" }}>Student Details</h3>
+                    <div className="sp-profile-fields">
+                      {[["Full Name", student.fullName], ["Class / Section", klass], ["Roll Number", student.rollNo || "—"], ["Admission No.", student.studentId || "—"]].map(([dt, dd]) => (
+                        <div key={dt} className="sp-field-cell"><div className="sp-field-dt">{dt}</div><div className="sp-field-dd">{dd}</div></div>
+                      ))}
+                    </div>
+                    <h3 style={{ margin: "1rem 0 .75rem" }}>Parent / Guardian</h3>
+                    <div className="sp-profile-fields">
+                      {student.parents.map((p) => (
+                        <div key={p.relation} className="sp-field-cell"><div className="sp-field-dt">{p.relation}</div><div className="sp-field-dd">{p.name}<br /><small style={{ color: "var(--slate)", fontWeight: 500 }}>{p.phone}</small></div></div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activePanel === "attendance" && (
+              <div className="sp-panel">
+                <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><h2>Attendance</h2></div>
+                <div className="sp-stat-row">
+                  {[["92.6%", "Attendance"], ["18", "Days Present"], ["2", "Days Absent"]].map(([v, l]) => (
+                    <div key={l} className="sp-stat-chip"><div><figure>{v}</figure><span>{l}</span></div></div>
+                  ))}
+                </div>
+                <div className="sp-card-grid cols-2">
+                  <div className="sp-card">
+                    <h3>Monthly Overview</h3>
+                    <table className="sp-table">
+                      <thead><tr><th>Week</th><th>Present</th><th>Absent</th></tr></thead>
+                      <tbody>
+                        {(dashData?.attendance?.classWise?.weeks || FALLBACK_DATA.attendance!.classWise.weeks).map((w) => (
+                          <tr key={w.week}><td>{w.week}</td><td>{w.present}</td><td>{w.absent}</td></tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="sp-card">
+                    <h3>Key Info</h3>
+                    <p style={{ fontSize: "0.875rem", color: "var(--slate)", lineHeight: 1.6 }}>Attendance is recorded daily by your class teacher. Contact the school office for any discrepancy. Minimum 75% attendance is required.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activePanel === "homework" && (
+              <div className="sp-panel">
+                <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><path d="M8 7h8M8 11h8"/></svg><h2>Homework / Assignments</h2></div>
+                <div className="sp-card">
+                  <h3>Assigned work</h3>
+                  <table className="sp-table">
+                    <thead><tr><th>Subject</th><th>Task</th><th>Due Date</th><th>Status</th></tr></thead>
+                    <tbody>
+                      {(dashData?.homework || FALLBACK_DATA.homework).map((h, i) => (
+                        <tr key={i}><td>{h.subject}</td><td>{h.title}</td><td>{h.dueDate}</td><td><span className={`sp-tag ${h.status === "Submitted" ? "ok" : "pending"}`}>{h.status}</span></td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="sp-upload-zone">
+                    <label htmlFor="hw-upload">📎 Submit assignment — choose file</label>
+                    <input type="file" id="hw-upload" ref={hwFileRef} accept=".pdf,.doc,.docx,image/*" style={{ display: "none" }} onChange={() => alert("Demo: File selected (no upload to server)")} />
+                    <p style={{ marginTop: ".5rem", fontSize: ".75rem", color: "var(--slate)" }}>Accepted: PDF, Word, Images (demo — no upload to server)</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activePanel === "results" && (
+              <div className="sp-panel">
+                <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg><h2>Results / Report Card</h2></div>
+                <div className="sp-card">
+                  <h3>Annual Assessment — Session 2025–26</h3>
+                  <table className="sp-table">
+                    <thead><tr><th>Subject</th><th>Max</th><th>Obtained</th><th>Grade</th></tr></thead>
+                    <tbody>
+                      {(dashData?.result || FALLBACK_DATA.result!).map((r) => (
+                        <tr key={r.subject}><td>{r.subject}</td><td>{r.max}</td><td>{r.obtained}</td><td>{r.grade}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p style={{ marginTop: "1rem", fontSize: ".9rem" }}><strong>Overall:</strong> 85.2% — <span className="sp-tag ok">Distinction</span></p>
+                  <button type="button" className="sp-btn-logout" style={{ marginTop: "1rem", padding: ".65rem 1.25rem" }} onClick={() => alert("PDF download is a demo feature.")}>Download Report Card (PDF)</button>
+                </div>
+              </div>
+            )}
+
+            {activePanel === "fees" && (
+              <div className="sp-panel">
+                <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><path d="M1 10h22"/></svg><h2>Fee Section</h2></div>
+                <div className="sp-card-grid cols-2">
+                  <div className="sp-card">
+                    <h3>Current Term</h3>
+                    <p style={{ marginBottom: ".5rem" }}><span className={`sp-tag ${student.fees.currentTermStatus === "Paid" ? "ok" : "pending"}`}>{student.fees.currentTermStatus}</span></p>
+                    <p style={{ fontSize: ".9rem", color: "var(--slate)" }}>{student.fees.currentTermNote}</p>
+                    <p style={{ marginTop: ".75rem", fontWeight: 600 }}>Next Due: {student.fees.nextDueAmount} — {student.fees.nextDueLabel}</p>
+                    <button type="button" className="sp-btn-mini" style={{ marginTop: ".85rem" }} onClick={() => alert("Demo: Online payment gateway")}>Pay online (demo)</button>
+                  </div>
+                  <div className="sp-card">
+                    <h3>Fee history</h3>
+                    <table className="sp-table">
+                      <thead><tr><th>Period</th><th>Amount</th><th>Status</th></tr></thead>
+                      <tbody>
+                        {student.fees.history.map((h) => (
+                          <tr key={h.period}><td>{h.period}</td><td>{h.amount}</td><td><span className={`sp-tag ${h.status === "Paid" ? "ok" : "pending"}`}>{h.status}</span></td></tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activePanel === "notices" && (
+              <div className="sp-panel">
+                <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg><h2>Notices / Announcements</h2></div>
+                <div className="sp-card">
+                  {(dashData?.notices || FALLBACK_DATA.notices).map((n, i) => (
+                    <div key={i} className="sp-msg-item">
+                      <span className="sp-msg-meta">{n.date} · <strong>{n.type}</strong></span>
+                      {n.title}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activePanel === "material" && (
+              <div className="sp-panel">
+                <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg><h2>Study Material</h2></div>
+                <div className="sp-card">
+                  <table className="sp-table">
+                    <thead><tr><th>Resource</th><th>Type</th><th></th></tr></thead>
+                    <tbody>
+                      {(dashData?.materials || FALLBACK_DATA.materials).map((m, i) => (
+                        <tr key={i}><td>{m.title}</td><td>{m.type}</td><td><button type="button" style={{ background: "none", border: "none", color: "var(--navy-light)", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", fontSize: "0.85rem" }} onClick={() => alert(`Demo: opening ${m.title}`)}>View</button></td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {activePanel === "timetable" && (
+              <div className="sp-panel">
+                <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><h2>Timetable — Monday</h2></div>
+                <div className="sp-card">
+                  {(dashData?.timetable || FALLBACK_DATA.timetable).map((t, i) => (
+                    <div key={i} className="sp-tslot"><span>{t.period} · {t.time}</span><strong>{t.subject}</strong></div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activePanel === "events" && (
+              <div className="sp-panel">
+                <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><h2>Events</h2></div>
+                <div className="sp-card-grid cols-2">
+                  <div className="sp-card">
+                    <h3>Upcoming</h3>
+                    {(dashData?.events || FALLBACK_DATA.events).map((e, i) => (
+                      <div key={i} style={{ marginBottom: ".85rem", fontSize: ".9rem" }}>
+                        <strong>{e.name}</strong><br />
+                        <span style={{ color: "var(--slate)", fontSize: ".82rem" }}>{e.detail} · {e.date}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="sp-card">
+                    <h3>School-wide</h3>
+                    {[["Annual Sports Day", "All students", "Late June"], ["Science Exhibition", "Stall participation", "12 June"], ["Cultural Night", "Performing arts", "15 July"]].map(([n, d, l]) => (
+                      <div key={n} style={{ marginBottom: ".85rem", fontSize: ".9rem" }}>
+                        <strong>{n}</strong><br />
+                        <span style={{ color: "var(--slate)", fontSize: ".82rem" }}>{d} · {l}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activePanel === "messages" && (
+              <div className="sp-panel">
+                <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg><h2>Messages</h2></div>
+                <div className="sp-card">
+                  {(dashData?.messages || FALLBACK_DATA.messages).map((m, i) => (
+                    <div key={i} className="sp-msg-item">
+                      <span className="sp-msg-meta">{m.date} · <strong>{m.from}</strong> — {m.subject}</span>
+                      {m.body}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
