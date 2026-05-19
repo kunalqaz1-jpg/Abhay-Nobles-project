@@ -55,7 +55,7 @@ export function TeacherDemoView({ nav, toast }: { nav: TeacherNavKey; toast: Toa
   switch (nav) {
     case "my-classes":
       return (
-        <DemoPage title="My classes" crumb="Teacher Â· My Classes">
+        <DemoPage title="My classes" crumb="Teacher · My Classes">
           <Toolbar primary="Add note (demo)" secondary="Export roster (demo)" toast={toast} />
           <div className="td-panel td-table-wrap">
             <table className="td-data-table">
@@ -128,7 +128,7 @@ function DemoPage({ title, crumb, children }: { title: string; crumb: string; ch
     <div>
       <p className="td-crumb">{crumb}</p>
       <h1 className="td-page-title">{title}</h1>
-      <p className="td-page-sub">Demo workspace for review â€” actions show toasts only.</p>
+      <p className="td-page-sub">Demo workspace for review — actions show toasts only.</p>
       {children}
     </div>
   );
@@ -453,7 +453,7 @@ function TeacherNoticesInteractive({ toast }: { toast: ToastFn }) {
 
   return (
     <div>
-      <p className="td-crumb">Teacher Â· Notices</p>
+      <p className="td-crumb">Teacher · Notices</p>
       <h1 className="td-page-title">Notice Board Management</h1>
       <p className="td-page-sub">Create school notices, choose audience, and edit published notices anytime.</p>
 
@@ -614,7 +614,7 @@ function TeacherMessagesInteractive({ toast }: { toast: ToastFn }) {
 
   return (
     <div>
-      <p className="td-crumb">Teacher Â· Messages</p>
+      <p className="td-crumb">Teacher · Messages</p>
       <h1 className="td-page-title">Send Messages</h1>
       <p className="td-page-sub">Send updates to all students, one selected class, or one student from a chosen class.</p>
 
@@ -776,7 +776,7 @@ function TeacherStudyMaterialInteractive({ toast }: { toast: ToastFn }) {
 
   return (
     <div>
-      <p className="td-crumb">Teacher Â· Study Material</p>
+      <p className="td-crumb">Teacher · Study Material</p>
       <h1 className="td-page-title">Study Material</h1>
       <p className="td-page-sub">Upload PDF or image resources, add video URLs, and assign them to the right class with a resource title.</p>
 
@@ -1109,7 +1109,7 @@ function TeacherSettingsInteractive({ toast }: { toast: ToastFn }) {
 
   return (
     <div>
-      <p className="td-crumb">Teacher Â· Settings</p>
+      <p className="td-crumb">Teacher · Settings</p>
       <h1 className="td-page-title">Profile Settings</h1>
       <p className="td-page-sub">Manage your teacher profile, professional details, and assigned classes.</p>
       <div className="td-panel">
@@ -1342,7 +1342,7 @@ function TeacherAttendanceInteractive({ toast }: { toast: ToastFn }) {
 
   return (
     <div>
-      <p className="td-crumb">Teacher Â· Attendance</p>
+      <p className="td-crumb">Teacher · Attendance</p>
       <h1 className="td-page-title">Attendance Management</h1>
       <p className="td-page-sub">
         Select class and date, then mark present/absent with remarks. Saved records
@@ -1440,7 +1440,7 @@ function TeacherAttendanceInteractive({ toast }: { toast: ToastFn }) {
 
       <div className="td-toolbar td-mt">
         <span className="td-muted">
-          Present: {presentCount} Â· Absent: {absentCount}
+          Present: {presentCount} · Absent: {absentCount}
         </span>
         <button
           type="button"
@@ -1540,7 +1540,7 @@ function TeacherHomeworkInteractive({ toast }: { toast: ToastFn }) {
 
   return (
     <div>
-      <p className="td-crumb">Teacher Â· Homework</p>
+      <p className="td-crumb">Teacher · Homework</p>
       <h1 className="td-page-title">Upload Homework</h1>
       <p className="td-page-sub">
         Fill all details, upload attachment, and manage each student&apos;s homework status.
@@ -1665,7 +1665,7 @@ function TeacherHomeworkInteractive({ toast }: { toast: ToastFn }) {
       <div className="td-panel td-mt">
         <div className="td-panel-head">
           <h3>Change Student Homework Status</h3>
-          <span className="td-muted">{finalClass} Â· {subject}</span>
+          <span className="td-muted">{finalClass} · {subject}</span>
         </div>
         <div className="td-demo-grid-3">
           <label className="td-field">
@@ -1736,7 +1736,7 @@ function TeacherHomeworkInteractive({ toast }: { toast: ToastFn }) {
       <div className="td-panel td-table-wrap td-mt">
         <div className="td-panel-head" style={{ padding: "1rem 1rem 0" }}>
           <h3 style={{ margin: 0 }}>Homework Status Grid</h3>
-          <span className="td-muted">{finalClass} Â· {subject}</span>
+          <span className="td-muted">{finalClass} · {subject}</span>
         </div>
         <table className="td-data-table">
           <thead>
@@ -1872,7 +1872,7 @@ function TeacherStudentsInteractive({ toast }: { toast: ToastFn }) {
 
   return (
     <div>
-      <p className="td-crumb">Teacher Â· Students</p>
+      <p className="td-crumb">Teacher · Students</p>
       <h1 className="td-page-title">Student Records</h1>
       <p className="td-page-sub">
         Select your allotted class to view students. Add new students and edit existing
@@ -2202,7 +2202,7 @@ function TeacherTimetableInteractive({ toast }: { toast: ToastFn }) {
   };
 
   return (
-    <DemoPage title="Timetable" crumb="Teacher Â· Timetable">
+    <DemoPage title="Timetable" crumb="Teacher · Timetable">
       <div className="td-toolbar">
         <button type="button" className="td-btn-primary" onClick={onSave}>
           {editingId ? "Update Entry" : "Add Entry"}
@@ -2340,7 +2340,7 @@ function TeacherResultsInteractive({ toast }: { toast: ToastFn }) {
 
   return (
     <div>
-      <p className="td-crumb">Teacher Â· Results</p>
+      <p className="td-crumb">Teacher · Results</p>
       <h1 className="td-page-title">Upload Exam Results</h1>
       <p className="td-page-sub">
         Upload PDF/Image for Yearly, Half-Yearly, and Unit Tests. Students will see
@@ -2476,7 +2476,7 @@ function TeacherResultsInteractive({ toast }: { toast: ToastFn }) {
                           toast(`Selected ${s.name} (Roll ${s.rollNo})`);
                         }}
                       >
-                        {s.name} â€” Roll {s.rollNo}
+                        {s.name} — Roll {s.rollNo}
                       </button>
                     ))
                   ) : (

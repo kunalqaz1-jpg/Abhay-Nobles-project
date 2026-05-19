@@ -11,14 +11,14 @@ const kpi = [
   { label: "Total Teachers", value: "86", delta: "+8.2% vs last month", trend: "up" as const },
   { label: "Total Classes", value: "42", delta: "+5.4% vs last month", trend: "up" as const },
   { label: "Student Attendance Rate", value: "94.2%", delta: "+3.7% vs last month", trend: "up" as const },
-  { label: "Pending Fees", value: "â‚¹5.48L", delta: "-6.3% vs last month", trend: "down" as const },
+  { label: "Pending Fees", value: "₹5.48L", delta: "-6.3% vs last month", trend: "down" as const },
   { label: "Teacher Attendance Rate", value: "96.8%", delta: "+2.1% vs last month", trend: "up" as const },
 ];
 
 const activities = [
   {
     title: "New student admission",
-    detail: "Grade IX â€” Admission form verified",
+    detail: "Grade IX — Admission form verified",
     time: "10 min ago",
     bg: "#dbeafe",
     color: "#1d4ed8",
@@ -26,7 +26,7 @@ const activities = [
   },
   {
     title: "Fee payment received",
-    detail: "â‚¹48,500 â€” Term II installment",
+    detail: "₹48,500 — Term II installment",
     time: "32 min ago",
     bg: "#dcfce7",
     color: "#15803d",
@@ -34,7 +34,7 @@ const activities = [
   },
   {
     title: "Exam scheduled",
-    detail: "Pre-board â€” Science practical batch A",
+    detail: "Pre-board — Science practical batch A",
     time: "1 hr ago",
     bg: "#ffedd5",
     color: "#c2410c",
@@ -46,7 +46,7 @@ const activitiesMore = [
   ...activities,
   {
     title: "Timetable revision published",
-    detail: "Grade X â€” Monday slot swap applied",
+    detail: "Grade X — Monday slot swap applied",
     time: "2 hr ago",
     bg: "#f3e8ff",
     color: "#7c3aed",
@@ -70,7 +70,7 @@ const activitiesMore = [
   },
   {
     title: "Salary batch processed",
-    detail: "May payroll â€” 86 staff",
+    detail: "May payroll — 86 staff",
     time: "Yesterday",
     bg: "#ecfdf5",
     color: "#15803d",
@@ -78,7 +78,7 @@ const activitiesMore = [
   },
   {
     title: "Parent enquiry resolved",
-    detail: "Transport route C â€” callback logged",
+    detail: "Transport route C — callback logged",
     time: "Yesterday",
     bg: "#f1f5f9",
     color: "#475569",
@@ -90,9 +90,9 @@ const admissionBars = [42, 55, 38, 62, 48, 71, 65, 58, 80, 52, 67, 74];
 const monthLabels = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
 
 const events = [
-  { day: "12", mon: "May", title: "PTM â€” Class X", tag: "Meeting", tagClass: "meeting" as const },
+  { day: "12", mon: "May", title: "PTM — Class X", tag: "Meeting", tagClass: "meeting" as const },
   { day: "18", mon: "May", title: "Annual Sports Day", tag: "Event", tagClass: "event" as const },
-  { day: "22", mon: "May", title: "Pre-board â€” Mathematics", tag: "Exam", tagClass: "exam" as const },
+  { day: "22", mon: "May", title: "Pre-board — Mathematics", tag: "Exam", tagClass: "exam" as const },
 ];
 
 const SEARCH_INDEX: { title: string; sub: string; nav: NavKey; keywords: string }[] = [
@@ -198,13 +198,13 @@ export default function AdminPrincipalDashboard() {
 
   const pageTitle =
     activeNav === "dashboard"
-      ? "Welcome back, Principal ðŸ‘‹"
+      ? "Welcome back, Principal 👋"
       : NAV_DEF.find((n) => n.id === activeNav)?.label ?? "Dashboard";
 
   const pageSub =
     activeNav === "dashboard"
       ? "Here's what's happening in your institution today."
-      : `Demo workspace Â· ${NAV_DEF.find((n) => n.id === activeNav)?.label ?? ""}`;
+      : `Demo workspace · ${NAV_DEF.find((n) => n.id === activeNav)?.label ?? ""}`;
 
   return (
     <div className="ap-erp">
@@ -224,12 +224,12 @@ export default function AdminPrincipalDashboard() {
             <input
               ref={searchInputRef}
               type="search"
-              placeholder="Search modules, students, actionsâ€¦"
+              placeholder="Search modules, students, actions…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               aria-label="Command search"
             />
-            <p className="ap-search-hint">â†‘â†“ Demo results Â· Enter to open Â· Esc to close Â· âŒ˜K to toggle</p>
+            <p className="ap-search-hint">↑↓ Demo results · Enter to open · Esc to close · ⌘K to toggle</p>
             <div className="ap-search-results">
               {filteredSearch.map((item) => (
                 <button
@@ -244,7 +244,7 @@ export default function AdminPrincipalDashboard() {
               ))}
               {filteredSearch.length === 0 ? (
                 <p className="ap-search-hint" style={{ padding: "1rem" }}>
-                  No demo matches. Try â€œfeeâ€, â€œexamâ€, or â€œstudentâ€.
+                  No demo matches. Try “fee”, “exam”, or “student”.
                 </p>
               ) : null}
             </div>
@@ -287,7 +287,7 @@ export default function AdminPrincipalDashboard() {
               <strong>Principal</strong>
               <small>
                 <span className="ap-dot-online" aria-hidden />
-                Shri Abhay Nobles Â· Online
+                Shri Abhay Nobles · Online
               </small>
             </div>
           </div>
@@ -309,7 +309,7 @@ export default function AdminPrincipalDashboard() {
               onClick={() => setSearchOpen(true)}
               readOnly
             />
-            <kbd className="ap-kbd">âŒ˜ K</kbd>
+            <kbd className="ap-kbd">⌘ K</kbd>
           </div>
           <div className="ap-topbar-right">
             <span className="ap-badge-status">
@@ -345,7 +345,7 @@ export default function AdminPrincipalDashboard() {
                     onClick={() => go("notices", "Emergency: Weather advisory (demo)")}
                   >
                     <strong>Transport advisory</strong>
-                    <small>Route C delay Â· 12 min ago</small>
+                    <small>Route C delay · 12 min ago</small>
                   </button>
                   <button
                     type="button"
@@ -353,7 +353,7 @@ export default function AdminPrincipalDashboard() {
                     onClick={() => go("fees", "12 fee reminders pending (demo)")}
                   >
                     <strong>Fee reminders</strong>
-                    <small>12 parents Â· batch ready</small>
+                    <small>12 parents · batch ready</small>
                   </button>
                   <div className="ap-dropdown-divider" />
                   <button
@@ -486,7 +486,7 @@ export default function AdminPrincipalDashboard() {
                   <div className="ap-line-chart">
                     <AttendanceLineChart />
                     <div className="ap-chart-hint" title="Tooltip">
-                      94.2% Â· 8 May
+                      94.2% · 8 May
                     </div>
                   </div>
                 </article>                <article className="ap-panel">

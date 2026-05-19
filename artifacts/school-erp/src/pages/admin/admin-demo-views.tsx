@@ -662,7 +662,7 @@ function TeachersInteractive({ toast }: { toast: ToastFn }) {
   return (
     <>
       <DemoSectionHeader
-        breadcrumb="Dashboard Â· Teachers"
+        breadcrumb="Dashboard · Teachers"
         title="Teacher & employee management"
         subtitle="Add newly joined teachers, add other employees, and edit details directly in the grid."
       />
@@ -824,7 +824,7 @@ export function AdminDemoView({ nav, toast }: { nav: NavKey; toast: ToastFn }) {
     return (
       <>
         <DemoSectionHeader
-          breadcrumb="Dashboard Â· Attendance"
+          breadcrumb="Dashboard · Attendance"
           title="Attendance"
           subtitle="Monthly attendance summary with weekly overview and calendar tracking."
         />

@@ -216,19 +216,25 @@ router.post("/students", async (req, res) => {
     if (!p?.studentId || !p?.fullName || !p?.className || !p?.section || !p?.rollNo) {
       return res.status(400).json({ message: "Student ID, name, class, section, and roll number are required." });
     }
-    if (!p.password || String(p.password).length < 4) {
-      return res.status(400).json({ message: "Password must be at least 4 characters." });
+    const providedPassword = p.password ? String(p.password).trim() : "";
+    const existing = await db.select().from(studentsTable).where(eq(studentsTable.studentId, String(p.studentId).trim())).limit(1);
+    if (!existing[0] && providedPassword.length < 4) {
+      return res.status(400).json({ message: "New student password must be at least 4 characters." });
     }
+    if (existing[0] && providedPassword && providedPassword.length < 4) {
+      return res.status(400).json({ message: "Updated password must be at least 4 characters." });
+    }
+    const password = providedPassword || existing[0]?.password || "1234";
     const payload = {
       studentId: String(p.studentId).trim(),
-      password: String(p.password).trim(),
+      password,
       fullName: String(p.fullName).trim(),
       className: String(p.className).trim(),
       section: String(p.section).trim(),
       rollNo: String(p.rollNo).trim(),
-      photo: String(p.photo || "./demo-student-profile.png").trim(),
-      parents: Array.isArray(p.parents) ? p.parents : [],
-      fees: p.fees || { currentTermStatus: "Pending", currentTermNote: "", nextDueAmount: "0", nextDueLabel: "", history: [] },
+      photo: String(p.photo || existing[0]?.photo || "./demo-student-profile.png").trim(),
+      parents: Array.isArray(p.parents) ? p.parents : (existing[0]?.parents ?? []),
+      fees: p.fees || existing[0]?.fees || { currentTermStatus: "Pending", currentTermNote: "", nextDueAmount: "0", nextDueLabel: "", history: [] },
       updatedAt: new Date(),
     };
     const saved = await db
