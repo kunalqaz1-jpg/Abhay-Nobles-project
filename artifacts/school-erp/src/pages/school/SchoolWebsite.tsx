@@ -1010,7 +1010,7 @@ export default function SchoolWebsite() {
             </div>
             <div className="principal-card reveal">
               <div className="principal-photo">
-                <img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=700&q=80" alt="School principal portrait" />
+                <img src="/faculty-sambhoo-singh.png" alt="School principal portrait" />
               </div>
               <div className="principal-content">
                 <div className="principal-quote">
