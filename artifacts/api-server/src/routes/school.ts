@@ -1,4 +1,8 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
+
+declare module "express-serve-static-core" {
+  interface Request { session?: SessionInfo; }
+}
 import { db } from "@workspace/db";
 import {
   studentsTable,
@@ -46,6 +50,7 @@ function requireAuth(roles?: SessionInfo["role"][]) {
     if (roles && !roles.includes(session.role)) {
       return res.status(403).json({ error: "Forbidden" });
     }
+    req.session = session;
     next();
   };
 }
@@ -179,7 +184,7 @@ router.get("/students", async (_req, res) => {
   return res.json(rows.map(formatStudent));
 });
 
-router.post("/students", async (req, res) => {
+router.post("/students", requireAuth(["admin"]), async (req, res) => {
   const {
     studentId, fullName, className, section, rollNo, photo, parents, fees, password,
   } = req.body;
@@ -199,7 +204,7 @@ router.post("/students", async (req, res) => {
         photo: photo ?? "",
         parents: parents ?? [],
         fees: fees ?? {},
-        ...(password ? { passwordHash: password } : {}),
+        ...(password ? { passwordHash: await bcryptjs.hash(password, 10) } : {}),
         updatedAt: new Date(),
       })
       .where(eq(studentsTable.studentId, studentId))
@@ -216,7 +221,7 @@ router.post("/students", async (req, res) => {
       section,
       rollNo,
       photo: photo ?? "",
-      passwordHash: password ?? "",
+      passwordHash: password ? await bcryptjs.hash(password, 10) : "",
       parents: parents ?? [],
       fees: fees ?? {},
     })
@@ -226,6 +231,9 @@ router.post("/students", async (req, res) => {
 
 router.get("/students/:studentId/dashboard", requireAuth(["student"]), async (req, res) => {
   const { studentId } = req.params;
+  if (req.session!.id !== studentId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
   const rows = await db.select().from(studentsTable).where(eq(studentsTable.studentId, studentId));
   if (rows.length === 0) {
     return res.status(404).json({ error: "Student not found" });
@@ -294,7 +302,7 @@ router.get("/students/:studentId/dashboard", requireAuth(["student"]), async (re
   });
 });
 
-router.post("/students/:studentId/fees", async (req, res) => {
+router.post("/students/:studentId/fees", requireAuth(["admin"]), async (req, res) => {
   const { studentId } = req.params;
   const { fees } = req.body;
   const updated = await db
@@ -315,7 +323,7 @@ router.get("/teachers", async (_req, res) => {
   return res.json(rows.map(formatTeacher));
 });
 
-router.post("/teachers", async (req, res) => {
+router.post("/teachers", requireAuth(["admin"]), async (req, res) => {
   const { teacherId, name, subject, qualification, joinDate, phone, assignedClasses, password } = req.body;
   if (!teacherId || !name) {
     return res.status(400).json({ error: "teacherId and name required" });
@@ -328,7 +336,7 @@ router.post("/teachers", async (req, res) => {
       .set({
         name, subject, qualification, joinDate, phone,
         assignedClasses: assignedClasses ?? [],
-        ...(password ? { passwordHash: password } : {}),
+        ...(password ? { passwordHash: await bcryptjs.hash(password, 10) } : {}),
         updatedAt: new Date(),
       })
       .where(eq(teachersTable.teacherId, teacherId))
@@ -340,7 +348,7 @@ router.post("/teachers", async (req, res) => {
     .insert(teachersTable)
     .values({
       teacherId, name, subject, qualification, joinDate, phone,
-      passwordHash: password ?? "",
+      passwordHash: password ? await bcryptjs.hash(password, 10) : "",
       assignedClasses: assignedClasses ?? [],
     })
     .returning();
@@ -349,7 +357,7 @@ router.post("/teachers", async (req, res) => {
 
 // ─── ATTENDANCE ───────────────────────────────────────────────────────────────
 
-router.post("/attendance/class", async (req, res) => {
+router.post("/attendance/class", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { className, date, teacherName, updatedAt, entries } = req.body;
 
   const existing = await db
@@ -411,7 +419,7 @@ router.get("/attendance/student/:studentId/latest", async (req, res) => {
 
 // ─── HOMEWORK ─────────────────────────────────────────────────────────────────
 
-router.post("/homework", async (req, res) => {
+router.post("/homework", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { id, className, section, subject, title, description, dueDate, fileName, teacherName, createdAt } = req.body;
 
   const existing = await db.select().from(homeworkTable).where(eq(homeworkTable.hwId, id));
@@ -450,7 +458,7 @@ router.get("/homework/latest/:className", async (req, res) => {
 
 // ─── RESULTS ─────────────────────────────────────────────────────────────────
 
-router.post("/results", async (req, res) => {
+router.post("/results", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { id, className, section, subject, examType, unitTestNumber, title, fileName, targetRollNo, teacherName, createdAt } = req.body;
 
   const existing = await db.select().from(resultsTable).where(eq(resultsTable.resultId, id));
@@ -506,7 +514,7 @@ router.get("/notices", async (req, res) => {
   return res.json(rows.map((n) => ({ id: n.noticeId, title: n.title, description: n.description, audience: n.audience, className: n.className, teacherName: n.teacherName, createdAt: n.createdAt })));
 });
 
-router.post("/notices", async (req, res) => {
+router.post("/notices", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { id, title, description, audience, className, teacherName, createdAt } = req.body;
 
   const existing = await db.select().from(noticesTable).where(eq(noticesTable.noticeId, id));
@@ -544,7 +552,7 @@ router.get("/messages", async (req, res) => {
   return res.json(rows.map((m) => ({ id: m.messageId, subject: m.subject, body: m.body, audience: m.audience, className: m.className, studentId: m.studentId, studentName: m.studentName, teacherName: m.teacherName, sentAt: m.sentAt })));
 });
 
-router.post("/messages", async (req, res) => {
+router.post("/messages", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { id, subject, body, audience, className, studentId, studentName, teacherName, sentAt } = req.body;
 
   const existing = await db.select().from(messagesTable).where(eq(messagesTable.messageId, id));
@@ -573,7 +581,7 @@ router.get("/materials", async (req, res) => {
   return res.json(rows.map((m) => ({ id: m.materialId, title: m.title, className: m.className, fileName: m.fileName, videoUrl: m.videoUrl, resourceType: m.resourceType, updatedAt: m.updatedAt })));
 });
 
-router.post("/materials", async (req, res) => {
+router.post("/materials", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { id, title, className, fileName, videoUrl, resourceType, updatedAt } = req.body;
 
   const existing = await db.select().from(studyMaterialsTable).where(eq(studyMaterialsTable.materialId, id));
@@ -608,7 +616,7 @@ router.get("/timetable", async (req, res) => {
   return res.json(rows.map((t) => ({ id: t.rowId, className: t.className, period: t.period, subject: t.subject, time: t.time, updatedAt: t.updatedAt })));
 });
 
-router.post("/timetable", async (req, res) => {
+router.post("/timetable", requireAuth(["admin"]), async (req, res) => {
   const { id, className, period, subject, time, updatedAt } = req.body;
 
   const existing = await db.select().from(timetableTable).where(eq(timetableTable.rowId, id));
@@ -645,7 +653,7 @@ router.get("/events", async (req, res) => {
   return res.json(rows.map((e) => ({ id: e.eventId, className: e.className, title: e.title, description: e.description, eventDate: e.eventDate, teacherName: e.teacherName, createdAt: e.createdAt })));
 });
 
-router.post("/events", async (req, res) => {
+router.post("/events", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { id, className, title, description, eventDate, teacherName, createdAt } = req.body;
 
   const existing = await db.select().from(eventsTable).where(eq(eventsTable.eventId, id));
