@@ -864,8 +864,8 @@ function GalleryManager({ toast }: { toast: (msg: string) => void }) {
   const fileInputRef = { current: null as HTMLInputElement | null };
 
   const API = (import.meta.env.VITE_API_BASE_URL as string) || "/api";
-  const SESSION_KEY = "admin_session";
-  const getToken = () => localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY) || "";
+  const SESSION_KEY = "abhay_admin_token";
+  const getToken = () => sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY) || "";
 
   const load = (cat: string) => {
     setLoading(true);
