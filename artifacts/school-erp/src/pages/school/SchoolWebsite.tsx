@@ -1031,7 +1031,7 @@ export default function SchoolWebsite() {
                 { img: "/faculty-bhavesh-suthar.png", name: "Mr. Bhavesh Suthar", dept: "Head of Science", qual: "M.Sc. Physics · 15 Years Exp.", delay: "reveal-delay-1" },
                 { img: "/faculty-kantilal.png", name: "Mr. Kantilal", dept: "English & Literature", qual: "M.A. English · 12 Years Exp.", delay: "reveal-delay-2" },
                 { img: "/faculty-pandey.png", name: "Mr. Pandey", dept: "Mathematics & Coding", qual: "M.Sc. Math · B.Tech · 10 Years", delay: "reveal-delay-3" },
-                { img: "https://images.unsplash.com/photo-1601412436009-d964bd02edbc?auto=format&fit=crop&w=300&q=80", name: "Mr. Nuton Singh", dept: "Social Studies", qual: "M.A. History · 18 Years Exp.", delay: "reveal-delay-4" },
+                { img: "/faculty-nuton-singh.png", name: "Mr. Nuton Singh", dept: "Social Studies", qual: "M.A. History · 18 Years Exp.", delay: "reveal-delay-4" },
               ].map((tc) => (
                 <div key={tc.name} className={`teacher-card reveal ${tc.delay}`}>
                   <div className="teacher-photo">
