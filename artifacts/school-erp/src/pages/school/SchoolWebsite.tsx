@@ -1028,7 +1028,7 @@ export default function SchoolWebsite() {
             </div>
             <div className="teachers-grid">
               {[
-                { img: "https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=300&q=80", name: "Mr. Bhavesh Suthar", dept: "Head of Science", qual: "M.Sc. Physics · 15 Years Exp.", delay: "reveal-delay-1" },
+                { img: "/faculty-bhavesh-suthar.png", name: "Mr. Bhavesh Suthar", dept: "Head of Science", qual: "M.Sc. Physics · 15 Years Exp.", delay: "reveal-delay-1" },
                 { img: "https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=300&q=80", name: "Mr. Kantilal", dept: "English & Literature", qual: "M.A. English · 12 Years Exp.", delay: "reveal-delay-2" },
                 { img: "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=300&q=80", name: "Mr. Pandey", dept: "Mathematics & Coding", qual: "M.Sc. Math · B.Tech · 10 Years", delay: "reveal-delay-3" },
                 { img: "https://images.unsplash.com/photo-1601412436009-d964bd02edbc?auto=format&fit=crop&w=300&q=80", name: "Mr. Nuton Singh", dept: "Social Studies", qual: "M.A. History · 18 Years Exp.", delay: "reveal-delay-4" },
