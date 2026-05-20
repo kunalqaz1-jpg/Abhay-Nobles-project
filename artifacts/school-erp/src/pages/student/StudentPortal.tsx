@@ -3,10 +3,19 @@ import { Link } from "wouter";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || "/api";
 
+function getStudentToken() {
+  try { return localStorage.getItem("abhay_student_token") ?? ""; } catch { return ""; }
+}
+
 async function apiFetch(path: string, init?: RequestInit) {
+  const token = getStudentToken();
   const res = await fetch(API_BASE + path, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers || {}),
+    },
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || "Request failed");
@@ -212,6 +221,7 @@ export default function StudentPortal() {
         method: "POST",
         body: JSON.stringify({ studentId: studentId.trim(), password }),
       });
+      if (data.token) localStorage.setItem("abhay_student_token", data.token);
       localStorage.setItem("abhay_student_session", JSON.stringify({ studentId: studentId.trim(), name: data.student?.fullName || studentId }));
       if (remember) localStorage.setItem("abhay_student_remember_id", studentId.trim());
       setWelcomeName((data.student?.fullName || studentId).split(" ")[0]);
@@ -233,6 +243,7 @@ export default function StudentPortal() {
 
   function handleLogout() {
     localStorage.removeItem("abhay_student_session");
+    localStorage.removeItem("abhay_student_token");
     setView("login");
     setDashData(null);
     setActivePanel("profile");

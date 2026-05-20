@@ -21,6 +21,7 @@ export default function TeacherLogin() {
       if (!res.ok) throw new Error("invalid");
       const data = await res.json();
       sessionStorage.setItem("abhay_teacher_session", JSON.stringify({ teacherId: data.teacherId, name: data.name, subject: data.subject }));
+      if (data.token) sessionStorage.setItem("abhay_teacher_token", data.token);
       setLocation("/teacher/dashboard");
     } catch {
       setError("Invalid credentials. Use your Staff ID and password.");

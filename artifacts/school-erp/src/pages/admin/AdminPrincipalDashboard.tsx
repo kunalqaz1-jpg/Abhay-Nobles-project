@@ -124,7 +124,8 @@ export default function AdminPrincipalDashboard() {
   const [kpi, setKpi] = useState(DEFAULT_KPI);
 
   useEffect(() => {
-    fetch("/api/admin/dashboard")
+    const token = (() => { try { return sessionStorage.getItem("abhay_admin_token") ?? ""; } catch { return ""; } })();
+    fetch("/api/admin/dashboard", token ? { headers: { Authorization: `Bearer ${token}` } } : undefined)
       .then((r) => r.json())
       .then((data) => {
         if (data.kpis) setKpi(data.kpis.map((k: { label: string; value: string; sub: string }) => ({ ...k, trend: "up" as const })));

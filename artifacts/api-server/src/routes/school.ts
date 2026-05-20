@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import {
   studentsTable,
@@ -17,8 +17,38 @@ import {
   announcementsTable,
 } from "@workspace/db/schema";
 import { eq, and, desc, isNull, or } from "drizzle-orm";
+import bcryptjs from "bcryptjs";
+import { randomUUID } from "crypto";
 
 const router = Router();
+
+// ─── AUTH SESSIONS (in-memory token store) ──────────────────────────────────
+
+type SessionInfo = { role: "student" | "teacher" | "admin"; id: string; expiresAt: number };
+const sessions = new Map<string, SessionInfo>();
+
+function createToken(role: SessionInfo["role"], id: string): string {
+  const token = randomUUID();
+  sessions.set(token, { role, id, expiresAt: Date.now() + 24 * 60 * 60 * 1000 });
+  return token;
+}
+
+function requireAuth(roles?: SessionInfo["role"][]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const header = req.headers.authorization ?? "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+    if (!token) return res.status(401).json({ error: "Unauthorised" });
+    const session = sessions.get(token);
+    if (!session || session.expiresAt < Date.now()) {
+      sessions.delete(token);
+      return res.status(401).json({ error: "Session expired" });
+    }
+    if (roles && !roles.includes(session.role)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    next();
+  };
+}
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -56,63 +86,50 @@ router.post("/students/login", async (req, res) => {
   if (!loginId || !password) {
     return res.status(400).json({ error: "studentId and password required" });
   }
-  const rows = await db
-    .select()
-    .from(studentsTable)
-    .where(eq(studentsTable.studentId, loginId));
-  if (rows.length === 0) {
-    return res.status(401).json({ error: "Invalid student ID or password" });
-  }
+  const rows = await db.select().from(studentsTable).where(eq(studentsTable.studentId, loginId));
+  if (rows.length === 0) return res.status(401).json({ error: "Invalid student ID or password" });
   const student = rows[0];
-  if (student.passwordHash !== password) {
-    return res.status(401).json({ error: "Invalid student ID or password" });
-  }
-  return res.json({ student: formatStudent(student) });
+  const valid = student.passwordHash.startsWith("$2")
+    ? await bcryptjs.compare(password, student.passwordHash)
+    : student.passwordHash === password;
+  if (!valid) return res.status(401).json({ error: "Invalid student ID or password" });
+  const token = createToken("student", student.studentId);
+  return res.json({ student: formatStudent(student), token });
 });
 
 // POST /teachers/login
 router.post("/teachers/login", async (req, res) => {
   const { username, password } = req.body;
-  if (!username || !password) {
-    return res.status(400).json({ error: "username and password required" });
-  }
-  const rows = await db
-    .select()
-    .from(teachersTable)
-    .where(eq(teachersTable.teacherId, username));
-  if (rows.length === 0) {
-    return res.status(401).json({ error: "Invalid teacher ID or password" });
-  }
+  if (!username || !password) return res.status(400).json({ error: "username and password required" });
+  const rows = await db.select().from(teachersTable).where(eq(teachersTable.teacherId, username));
+  if (rows.length === 0) return res.status(401).json({ error: "Invalid teacher ID or password" });
   const teacher = rows[0];
-  if (teacher.passwordHash !== password) {
-    return res.status(401).json({ error: "Invalid teacher ID or password" });
-  }
-  return res.json(formatTeacher(teacher));
+  const valid = teacher.passwordHash.startsWith("$2")
+    ? await bcryptjs.compare(password, teacher.passwordHash)
+    : teacher.passwordHash === password;
+  if (!valid) return res.status(401).json({ error: "Invalid teacher ID or password" });
+  const token = createToken("teacher", teacher.teacherId);
+  return res.json({ ...formatTeacher(teacher), token });
 });
 
 // POST /admin/login
 router.post("/admin/login", async (req, res) => {
   const { username, password } = req.body;
-  if (!username || !password) {
-    return res.status(400).json({ error: "username and password required" });
-  }
-  const rows = await db
-    .select()
-    .from(adminUsersTable)
-    .where(eq(adminUsersTable.username, username));
-  if (rows.length === 0) {
-    return res.status(401).json({ error: "Invalid username or password" });
-  }
+  if (!username || !password) return res.status(400).json({ error: "username and password required" });
+  const rows = await db.select().from(adminUsersTable).where(eq(adminUsersTable.username, username));
+  if (rows.length === 0) return res.status(401).json({ error: "Invalid username or password" });
   const admin = rows[0];
-  if (admin.passwordHash !== password) {
-    return res.status(401).json({ error: "Invalid username or password" });
-  }
-  return res.json({ id: admin.id, username: admin.username });
+  const valid = admin.passwordHash.startsWith("$2")
+    ? await bcryptjs.compare(password, admin.passwordHash)
+    : admin.passwordHash === password;
+  if (!valid) return res.status(401).json({ error: "Invalid username or password" });
+  const token = createToken("admin", admin.username);
+  return res.json({ id: admin.id, username: admin.username, token });
 });
 
 // ─── ADMIN DASHBOARD ─────────────────────────────────────────────────────────
 
-router.get("/admin/dashboard", async (_req, res) => {
+router.get("/admin/dashboard", requireAuth(["admin"]), async (_req, res) => {
   const [students, teachers, admissions, attendanceRows] = await Promise.all([
     db.select().from(studentsTable),
     db.select().from(teachersTable),
@@ -207,7 +224,7 @@ router.post("/students", async (req, res) => {
   return res.json(formatStudent(inserted[0]));
 });
 
-router.get("/students/:studentId/dashboard", async (req, res) => {
+router.get("/students/:studentId/dashboard", requireAuth(["student"]), async (req, res) => {
   const { studentId } = req.params;
   const rows = await db.select().from(studentsTable).where(eq(studentsTable.studentId, studentId));
   if (rows.length === 0) {
@@ -228,37 +245,51 @@ router.get("/students/:studentId/dashboard", async (req, res) => {
 
   return res.json({
     student: formatStudent(student),
+    attendance: null,
     homework: homework.map((h) => ({
-      id: h.hwId, className: h.className, section: h.section, subject: h.subject,
-      title: h.title, description: h.description, dueDate: h.dueDate, fileName: h.fileName,
-      teacherName: h.teacherName, createdAt: h.createdAt,
+      subject: h.subject,
+      title: h.title,
+      description: h.description ?? "",
+      dueDate: h.dueDate,
+      status: "Pending",
+      fileName: h.fileName ?? "",
+      teacherName: h.teacherName,
     })),
-    results: results.map((r) => ({
-      id: r.resultId, className: r.className, section: r.section, subject: r.subject,
-      examType: r.examType, unitTestNumber: r.unitTestNumber, title: r.title,
-      fileName: r.fileName, targetRollNo: r.targetRollNo, teacherName: r.teacherName,
+    result: results.map((r) => ({
+      id: r.resultId,
+      title: r.title,
+      subject: r.subject,
+      examType: r.examType,
+      fileName: r.fileName ?? "",
+      teacherName: r.teacherName,
       createdAt: r.createdAt,
     })),
     notices: notices.map((n) => ({
-      id: n.noticeId, title: n.title, description: n.description, audience: n.audience,
-      className: n.className, teacherName: n.teacherName, createdAt: n.createdAt,
+      title: n.title,
+      type: n.audience ?? "General",
+      date: n.createdAt,
     })),
     timetable: timetable.map((t) => ({
-      id: t.rowId, className: t.className, period: t.period, subject: t.subject,
-      time: t.time, updatedAt: t.updatedAt,
+      period: t.period,
+      time: t.time,
+      subject: t.subject,
     })),
     events: events.map((e) => ({
-      id: e.eventId, className: e.className, title: e.title, description: e.description,
-      eventDate: e.eventDate, teacherName: e.teacherName, createdAt: e.createdAt,
+      name: e.title,
+      detail: e.description ?? "",
+      date: e.eventDate,
     })),
     messages: messages.map((m) => ({
-      id: m.messageId, subject: m.subject, body: m.body, audience: m.audience,
-      className: m.className, studentId: m.studentId, studentName: m.studentName,
-      teacherName: m.teacherName, sentAt: m.sentAt,
+      from: m.teacherName,
+      subject: m.subject,
+      date: m.sentAt,
+      body: m.body,
     })),
     materials: materials.map((m) => ({
-      id: m.materialId, title: m.title, className: m.className, fileName: m.fileName,
-      videoUrl: m.videoUrl, resourceType: m.resourceType, updatedAt: m.updatedAt,
+      title: m.title,
+      type: m.resourceType,
+      fileName: m.fileName ?? "",
+      videoUrl: m.videoUrl ?? "",
     })),
   });
 });

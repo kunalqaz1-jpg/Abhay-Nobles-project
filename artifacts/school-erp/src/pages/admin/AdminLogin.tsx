@@ -21,6 +21,7 @@ export default function AdminLogin() {
       if (!res.ok) throw new Error("invalid");
       const data = await res.json();
       sessionStorage.setItem("abhay_admin_session", JSON.stringify({ id: data.id, username: data.username }));
+      if (data.token) sessionStorage.setItem("abhay_admin_token", data.token);
       setLocation("/admin/dashboard");
     } catch {
       setError("Invalid credentials. Use your admin username and password.");
