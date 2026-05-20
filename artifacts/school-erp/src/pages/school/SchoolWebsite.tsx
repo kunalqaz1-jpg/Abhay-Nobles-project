@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
-import { apiRequest } from "@/shared/api-base";
+import { apiRequest, API_BASE_URL } from "@/shared/api-base";
 
-const GALLERY_ITEMS = [
+const STATIC_GALLERY = [
   { src: "https://images.unsplash.com/photo-1497486751825-1233686d5d80?auto=format&fit=crop&w=900&q=80", alt: "School building", cat: "campus" },
   { src: "https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=900&q=80", alt: "Prize distribution", cat: "events" },
   { src: "https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=900&q=80", alt: "Science lab", cat: "campus" },
@@ -17,6 +17,17 @@ const GALLERY_ITEMS = [
   { src: "https://images.unsplash.com/photo-1551958219-acbc608c6377?auto=format&fit=crop&w=900&q=80", alt: "Outdoor school activity", cat: "events" },
 ];
 
+function galleryImgSrc(imageData: string) {
+  return imageData.startsWith("data:") || imageData.startsWith("http") ? imageData : `data:image/jpeg;base64,${imageData}`;
+}
+
+const CAT_MAP: Record<string, string> = {
+  "gallery-campus": "campus",
+  "gallery-events": "events",
+  "gallery-sports": "sports",
+  "gallery-cultural": "cultural",
+};
+
 export default function SchoolWebsite() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -24,6 +35,7 @@ export default function SchoolWebsite() {
   const [testimonialIdx, setTestimonialIdx] = useState(0);
   const [activeTab, setActiveTab] = useState("Pre-Primary");
   const [galleryFilter, setGalleryFilter] = useState("all");
+  const [galleryItems, setGalleryItems] = useState<{ src: string; alt: string; cat: string }[]>(STATIC_GALLERY);
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
   const [admitSubmitted, setAdmitSubmitted] = useState(false);
   const [contactSubmitted, setContactSubmitted] = useState(false);
@@ -113,7 +125,22 @@ export default function SchoolWebsite() {
     { stars: "★★★★★", text: "I am proud to be an alumnus of Abhay Nobles. The discipline, values, and education I received here shaped my entire career. I secured IIT Bombay rank 142 — and I owe it all to this wonderful institution.", photo: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=200&q=80", name: "Mr. Lalit", role: "IIT Bombay · Batch of 2011 · Alumni" },
   ];
 
-  const filteredGallery = galleryFilter === "all" ? GALLERY_ITEMS : GALLERY_ITEMS.filter((g) => g.cat === galleryFilter);
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/gallery-images?section=gallery`)
+      .then((r) => r.json())
+      .then((data: { _id: string; title: string; alt: string; category: string; imageData: string }[]) => {
+        if (data && data.length > 0) {
+          setGalleryItems(data.map((img) => ({
+            src: galleryImgSrc(img.imageData),
+            alt: img.alt || img.title,
+            cat: CAT_MAP[img.category] ?? img.category,
+          })));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const filteredGallery = galleryFilter === "all" ? galleryItems : galleryItems.filter((g) => g.cat === galleryFilter);
 
   return (
     <>
