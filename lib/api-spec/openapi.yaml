@@ -1,6 +1,5 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
   description: API specification
@@ -9,14 +8,27 @@ servers:
     description: Base API path
 tags:
   - name: health
-    description: Health operations
+  - name: auth
+  - name: students
+  - name: teachers
+  - name: attendance
+  - name: homework
+  - name: results
+  - name: notices
+  - name: messages
+  - name: materials
+  - name: timetable
+  - name: events
+  - name: admissions
+  - name: contacts
+  - name: announcements
+  - name: admin
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +36,1298 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /students/login:
+    post:
+      operationId: studentLogin
+      tags: [auth]
+      summary: Student login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentDirectoryRecord"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teachers/login:
+    post:
+      operationId: teacherLogin
+      tags: [auth]
+      summary: Teacher login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeacherDirectoryRecord"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/login:
+    post:
+      operationId: adminLogin
+      tags: [auth]
+      summary: Admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/dashboard:
+    get:
+      operationId: getAdminDashboard
+      tags: [admin]
+      summary: Get admin dashboard summary
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDashboard"
+
+  /students:
+    get:
+      operationId: getStudents
+      tags: [students]
+      summary: List all students
+      responses:
+        "200":
+          description: List of students
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StudentDirectoryRecord"
+    post:
+      operationId: upsertStudent
+      tags: [students]
+      summary: Create or update a student
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudentUpsertInput"
+      responses:
+        "200":
+          description: Student saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentDirectoryRecord"
+
+  /students/{studentId}/dashboard:
+    get:
+      operationId: getStudentDashboard
+      tags: [students]
+      summary: Get student dashboard data
+      parameters:
+        - name: studentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Student dashboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentDashboard"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /students/{studentId}/fees:
+    post:
+      operationId: updateStudentFees
+      tags: [students]
+      summary: Update student fees
+      parameters:
+        - name: studentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudentFeesInput"
+      responses:
+        "200":
+          description: Fees updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentDirectoryRecord"
+
+  /teachers:
+    get:
+      operationId: getTeachers
+      tags: [teachers]
+      summary: List all teachers
+      responses:
+        "200":
+          description: List of teachers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeacherDirectoryRecord"
+    post:
+      operationId: upsertTeacher
+      tags: [teachers]
+      summary: Create or update a teacher
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeacherUpsertInput"
+      responses:
+        "200":
+          description: Teacher saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeacherDirectoryRecord"
+
+  /attendance/class:
+    post:
+      operationId: saveClassAttendance
+      tags: [attendance]
+      summary: Save class attendance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClassAttendanceInput"
+      responses:
+        "200":
+          description: Attendance saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClassAttendanceRecord"
+    get:
+      operationId: getClassAttendance
+      tags: [attendance]
+      summary: Get class attendance for a date
+      parameters:
+        - name: className
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Attendance record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClassAttendanceRecord"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /attendance/student/{studentId}/latest:
+    get:
+      operationId: getLatestStudentAttendance
+      tags: [attendance]
+      summary: Get latest attendance for a student
+      parameters:
+        - name: studentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Latest attendance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentAttendanceLatest"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /homework:
+    post:
+      operationId: saveHomework
+      tags: [homework]
+      summary: Save a homework record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HomeworkInput"
+      responses:
+        "200":
+          description: Homework saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HomeworkRecord"
+
+  /homework/latest/{className}:
+    get:
+      operationId: getLatestHomework
+      tags: [homework]
+      summary: Get latest homework for a class
+      parameters:
+        - name: className
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Latest homework
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HomeworkRecord"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /results:
+    post:
+      operationId: saveResult
+      tags: [results]
+      summary: Save a result record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResultInput"
+      responses:
+        "200":
+          description: Result saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResultRecord"
+
+  /results/latest:
+    get:
+      operationId: getLatestResult
+      tags: [results]
+      summary: Get latest result for a class/student
+      parameters:
+        - name: className
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: rollNo
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Latest result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResultRecord"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /notices:
+    get:
+      operationId: getNotices
+      tags: [notices]
+      summary: Get notices
+      parameters:
+        - name: className
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of notices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NoticeRecord"
+    post:
+      operationId: saveNotice
+      tags: [notices]
+      summary: Save a notice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NoticeInput"
+      responses:
+        "200":
+          description: Notice saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoticeRecord"
+
+  /messages:
+    get:
+      operationId: getMessages
+      tags: [messages]
+      summary: Get messages
+      parameters:
+        - name: className
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: studentId
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MessageRecord"
+    post:
+      operationId: saveMessage
+      tags: [messages]
+      summary: Save a message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageInput"
+      responses:
+        "200":
+          description: Message saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageRecord"
+
+  /materials:
+    get:
+      operationId: getMaterials
+      tags: [materials]
+      summary: Get study materials
+      parameters:
+        - name: className
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of study materials
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StudyMaterialRecord"
+    post:
+      operationId: saveMaterial
+      tags: [materials]
+      summary: Save a study material
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudyMaterialInput"
+      responses:
+        "200":
+          description: Material saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudyMaterialRecord"
+
+  /timetable:
+    get:
+      operationId: getTimetable
+      tags: [timetable]
+      summary: Get timetable
+      parameters:
+        - name: className
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of timetable rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TimetableRowRecord"
+    post:
+      operationId: saveTimetableRow
+      tags: [timetable]
+      summary: Save a timetable row
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TimetableRowInput"
+      responses:
+        "200":
+          description: Timetable row saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimetableRowRecord"
+
+  /events:
+    get:
+      operationId: getEvents
+      tags: [events]
+      summary: Get events
+      parameters:
+        - name: className
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EventRecord"
+    post:
+      operationId: saveEvent
+      tags: [events]
+      summary: Save an event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventInput"
+      responses:
+        "200":
+          description: Event saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventRecord"
+
+  /admissions:
+    post:
+      operationId: submitAdmission
+      tags: [admissions]
+      summary: Submit admission inquiry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdmissionInput"
+      responses:
+        "200":
+          description: Admission submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdmissionRecord"
+
+  /contacts:
+    post:
+      operationId: submitContact
+      tags: [contacts]
+      summary: Submit contact inquiry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactInput"
+      responses:
+        "200":
+          description: Contact submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactRecord"
+
+  /announcements:
+    get:
+      operationId: getAnnouncements
+      tags: [announcements]
+      summary: Get active announcements
+      responses:
+        "200":
+          description: List of announcements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AnnouncementRecord"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    LoginInput:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    AdminUser:
+      type: object
+      required: [id, username]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+
+    FeeHistoryItem:
+      type: object
+      required: [period, amount, status]
+      properties:
+        period:
+          type: string
+        amount:
+          type: string
+        status:
+          type: string
+
+    StudentFees:
+      type: object
+      required: [currentTermStatus, currentTermNote, nextDueAmount, nextDueLabel, history]
+      properties:
+        currentTermStatus:
+          type: string
+        currentTermNote:
+          type: string
+        nextDueAmount:
+          type: string
+        nextDueLabel:
+          type: string
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/FeeHistoryItem"
+
+    StudentParent:
+      type: object
+      required: [relation, name, phone]
+      properties:
+        relation:
+          type: string
+        name:
+          type: string
+        phone:
+          type: string
+
+    StudentDirectoryRecord:
+      type: object
+      required: [studentId, fullName, className, section, rollNo, photo, parents, fees]
+      properties:
+        studentId:
+          type: string
+        fullName:
+          type: string
+        className:
+          type: string
+        section:
+          type: string
+        rollNo:
+          type: string
+        photo:
+          type: string
+        parents:
+          type: array
+          items:
+            $ref: "#/components/schemas/StudentParent"
+        fees:
+          $ref: "#/components/schemas/StudentFees"
+
+    StudentUpsertInput:
+      type: object
+      required: [studentId, fullName, className, section, rollNo, photo, parents, fees]
+      properties:
+        studentId:
+          type: string
+        fullName:
+          type: string
+        className:
+          type: string
+        section:
+          type: string
+        rollNo:
+          type: string
+        photo:
+          type: string
+        password:
+          type: string
+        parents:
+          type: array
+          items:
+            $ref: "#/components/schemas/StudentParent"
+        fees:
+          $ref: "#/components/schemas/StudentFees"
+
+    StudentFeesInput:
+      type: object
+      required: [fees]
+      properties:
+        fees:
+          $ref: "#/components/schemas/StudentFees"
+
+    TeacherDirectoryRecord:
+      type: object
+      required: [teacherId, name, subject, qualification, joinDate, phone, assignedClasses]
+      properties:
+        teacherId:
+          type: string
+        name:
+          type: string
+        subject:
+          type: string
+        qualification:
+          type: string
+        joinDate:
+          type: string
+        phone:
+          type: string
+        assignedClasses:
+          type: array
+          items:
+            type: string
+
+    TeacherUpsertInput:
+      type: object
+      required: [teacherId, name, subject, qualification, joinDate, phone, assignedClasses]
+      properties:
+        teacherId:
+          type: string
+        name:
+          type: string
+        subject:
+          type: string
+        qualification:
+          type: string
+        joinDate:
+          type: string
+        phone:
+          type: string
+        password:
+          type: string
+        assignedClasses:
+          type: array
+          items:
+            type: string
+
+    AttendanceEntry:
+      type: object
+      required: [studentId, studentName, status, remark]
+      properties:
+        studentId:
+          type: string
+        studentName:
+          type: string
+        status:
+          type: string
+        remark:
+          type: string
+
+    ClassAttendanceRecord:
+      type: object
+      required: [className, date, teacherName, updatedAt, entries]
+      properties:
+        className:
+          type: string
+        date:
+          type: string
+        teacherName:
+          type: string
+        updatedAt:
+          type: string
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/AttendanceEntry"
+
+    ClassAttendanceInput:
+      type: object
+      required: [className, date, teacherName, updatedAt, entries]
+      properties:
+        className:
+          type: string
+        date:
+          type: string
+        teacherName:
+          type: string
+        updatedAt:
+          type: string
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/AttendanceEntry"
+
+    StudentAttendanceLatest:
+      type: object
+      required: [record, entry]
+      properties:
+        record:
+          $ref: "#/components/schemas/ClassAttendanceRecord"
+        entry:
+          $ref: "#/components/schemas/AttendanceEntry"
+
+    HomeworkRecord:
+      type: object
+      required: [id, className, section, subject, title, description, dueDate, fileName, teacherName, createdAt]
+      properties:
+        id:
+          type: string
+        className:
+          type: string
+        section:
+          type: string
+        subject:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        dueDate:
+          type: string
+        fileName:
+          type: string
+        teacherName:
+          type: string
+        createdAt:
+          type: string
+
+    HomeworkInput:
+      type: object
+      required: [id, className, section, subject, title, description, dueDate, fileName, teacherName, createdAt]
+      properties:
+        id:
+          type: string
+        className:
+          type: string
+        section:
+          type: string
+        subject:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        dueDate:
+          type: string
+        fileName:
+          type: string
+        teacherName:
+          type: string
+        createdAt:
+          type: string
+
+    ResultRecord:
+      type: object
+      required: [id, className, section, subject, examType, title, fileName, teacherName, createdAt]
+      properties:
+        id:
+          type: string
+        className:
+          type: string
+        section:
+          type: string
+        subject:
+          type: string
+        examType:
+          type: string
+        unitTestNumber:
+          type: ["integer", "null"]
+        title:
+          type: string
+        fileName:
+          type: string
+        targetRollNo:
+          type: ["string", "null"]
+        teacherName:
+          type: string
+        createdAt:
+          type: string
+
+    ResultInput:
+      type: object
+      required: [id, className, section, subject, examType, title, fileName, teacherName, createdAt]
+      properties:
+        id:
+          type: string
+        className:
+          type: string
+        section:
+          type: string
+        subject:
+          type: string
+        examType:
+          type: string
+        unitTestNumber:
+          type: ["integer", "null"]
+        title:
+          type: string
+        fileName:
+          type: string
+        targetRollNo:
+          type: ["string", "null"]
+        teacherName:
+          type: string
+        createdAt:
+          type: string
+
+    NoticeRecord:
+      type: object
+      required: [id, title, description, audience, className, teacherName, createdAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        audience:
+          type: string
+        className:
+          type: string
+        teacherName:
+          type: string
+        createdAt:
+          type: string
+
+    NoticeInput:
+      type: object
+      required: [id, title, description, audience, className, teacherName, createdAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        audience:
+          type: string
+        className:
+          type: string
+        teacherName:
+          type: string
+        createdAt:
+          type: string
+
+    MessageRecord:
+      type: object
+      required: [id, subject, body, audience, className, teacherName, sentAt]
+      properties:
+        id:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
+        audience:
+          type: string
+        className:
+          type: string
+        studentId:
+          type: ["string", "null"]
+        studentName:
+          type: ["string", "null"]
+        teacherName:
+          type: string
+        sentAt:
+          type: string
+
+    MessageInput:
+      type: object
+      required: [id, subject, body, audience, className, teacherName, sentAt]
+      properties:
+        id:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
+        audience:
+          type: string
+        className:
+          type: string
+        studentId:
+          type: ["string", "null"]
+        studentName:
+          type: ["string", "null"]
+        teacherName:
+          type: string
+        sentAt:
+          type: string
+
+    StudyMaterialRecord:
+      type: object
+      required: [id, title, className, fileName, videoUrl, resourceType, updatedAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        className:
+          type: string
+        fileName:
+          type: string
+        videoUrl:
+          type: string
+        resourceType:
+          type: string
+        updatedAt:
+          type: string
+
+    StudyMaterialInput:
+      type: object
+      required: [id, title, className, fileName, videoUrl, resourceType, updatedAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        className:
+          type: string
+        fileName:
+          type: string
+        videoUrl:
+          type: string
+        resourceType:
+          type: string
+        updatedAt:
+          type: string
+
+    TimetableRowRecord:
+      type: object
+      required: [id, className, period, subject, time, updatedAt]
+      properties:
+        id:
+          type: string
+        className:
+          type: string
+        period:
+          type: string
+        subject:
+          type: string
+        time:
+          type: string
+        updatedAt:
+          type: string
+
+    TimetableRowInput:
+      type: object
+      required: [id, className, period, subject, time, updatedAt]
+      properties:
+        id:
+          type: string
+        className:
+          type: string
+        period:
+          type: string
+        subject:
+          type: string
+        time:
+          type: string
+        updatedAt:
+          type: string
+
+    EventRecord:
+      type: object
+      required: [id, className, title, description, eventDate, teacherName, createdAt]
+      properties:
+        id:
+          type: string
+        className:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        eventDate:
+          type: string
+        teacherName:
+          type: string
+        createdAt:
+          type: string
+
+    EventInput:
+      type: object
+      required: [id, className, title, description, eventDate, teacherName, createdAt]
+      properties:
+        id:
+          type: string
+        className:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        eventDate:
+          type: string
+        teacherName:
+          type: string
+        createdAt:
+          type: string
+
+    AdmissionRecord:
+      type: object
+      required: [id, studentName, parentName, phone, email, classApplied, message, createdAt, status]
+      properties:
+        id:
+          type: integer
+        studentName:
+          type: string
+        parentName:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        classApplied:
+          type: string
+        message:
+          type: string
+        createdAt:
+          type: string
+        status:
+          type: string
+
+    AdmissionInput:
+      type: object
+      required: [studentName, parentName, phone, email, classApplied, message]
+      properties:
+        studentName:
+          type: string
+        parentName:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        classApplied:
+          type: string
+        message:
+          type: string
+
+    ContactRecord:
+      type: object
+      required: [id, fullName, phone, email, subject, message, createdAt]
+      properties:
+        id:
+          type: integer
+        fullName:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        subject:
+          type: string
+        message:
+          type: string
+        createdAt:
+          type: string
+
+    ContactInput:
+      type: object
+      required: [fullName, phone, email, subject, message]
+      properties:
+        fullName:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        subject:
+          type: string
+        message:
+          type: string
+
+    AnnouncementRecord:
+      type: object
+      required: [id, text, isActive, sortOrder]
+      properties:
+        id:
+          type: integer
+        text:
+          type: string
+        isActive:
+          type: boolean
+        sortOrder:
+          type: integer
+
+    AdminKPI:
+      type: object
+      required: [label, value, sub]
+      properties:
+        label:
+          type: string
+        value:
+          type: string
+        sub:
+          type: string
+
+    AdminDashboard:
+      type: object
+      required: [kpis, recentAdmissions, recentAttendance, recentFees]
+      properties:
+        kpis:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminKPI"
+        recentAdmissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdmissionRecord"
+        recentAttendance:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClassAttendanceRecord"
+        recentFees:
+          type: array
+          items:
+            $ref: "#/components/schemas/FeeHistoryItem"
+
+    StudentDashboard:
+      type: object
+      required: [student, homework, results, notices, timetable, events, messages, materials]
+      properties:
+        student:
+          $ref: "#/components/schemas/StudentDirectoryRecord"
+        homework:
+          type: array
+          items:
+            $ref: "#/components/schemas/HomeworkRecord"
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResultRecord"
+        notices:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoticeRecord"
+        timetable:
+          type: array
+          items:
+            $ref: "#/components/schemas/TimetableRowRecord"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventRecord"
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageRecord"
+        materials:
+          type: array
+          items:
+            $ref: "#/components/schemas/StudyMaterialRecord"
