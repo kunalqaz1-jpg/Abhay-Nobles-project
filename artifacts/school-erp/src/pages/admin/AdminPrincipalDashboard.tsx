@@ -108,6 +108,7 @@ const NAV_DEF: { id: NavKey; label: string; Icon: typeof IconLayout }[] = [
   { id: "fees", label: "Fee Management", Icon: IconCurrency },
   { id: "timetable", label: "Timetable", Icon: IconCalendar },
   { id: "notices", label: "Notices", Icon: IconBell },
+  { id: "gallery", label: "Gallery Manager", Icon: IconPhoto },
   { id: "settings", label: "Settings", Icon: IconGear },
 ];
 
@@ -740,6 +741,16 @@ function IconGear() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
       <circle cx="12" cy="12" r="3" />
       <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+    </svg>
+  );
+}
+
+function IconPhoto() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <polyline points="21 15 16 10 5 21" />
     </svg>
   );
 }

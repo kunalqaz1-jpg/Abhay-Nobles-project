@@ -53,6 +53,7 @@ export type NavKey =
   | "notices"
   | "documents"
   | "analytics"
+  | "gallery"
   | "settings";
 
 type ToastFn = (message: string) => void;
@@ -804,6 +805,238 @@ function TeachersInteractive({ toast }: { toast: ToastFn }) {
   );
 }
 
+// ─── GALLERY MANAGER ─────────────────────────────────────────────────────────
+
+const GALLERY_CATS = [
+  { label: "Gallery – Campus", val: "gallery-campus" },
+  { label: "Gallery – Events", val: "gallery-events" },
+  { label: "Gallery – Sports", val: "gallery-sports" },
+  { label: "Gallery – Art & Culture", val: "gallery-cultural" },
+  { label: "Student Life", val: "student-life" },
+  { label: "Faculty Photos", val: "faculty" },
+  { label: "About Photo", val: "about" },
+];
+
+interface GalleryItem { _id: string; title: string; alt: string; category: string; imageData: string; mimeType: string; }
+
+function compressImage(file: File, maxPx = 1400, quality = 0.82): Promise<{ dataUrl: string; mimeType: string }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > maxPx || h > maxPx) {
+          if (w > h) { h = Math.round(h * maxPx / w); w = maxPx; }
+          else { w = Math.round(w * maxPx / h); h = maxPx; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        resolve({ dataUrl, mimeType: "image/jpeg" });
+      };
+      img.onerror = reject;
+      img.src = ev.target!.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function GalleryManager({ toast }: { toast: (msg: string) => void }) {
+  const [activeTab, setActiveTab] = useState<string>("gallery-campus");
+  const [images, setImages] = useState<GalleryItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [form, setForm] = useState({ title: "", alt: "" });
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null);
+
+  const API = (import.meta.env.VITE_API_BASE_URL as string) || "/api";
+  const SESSION_KEY = "admin_session";
+  const getToken = () => localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY) || "";
+
+  const load = (cat: string) => {
+    setLoading(true);
+    fetch(`${API}/gallery-images?category=${encodeURIComponent(cat)}`)
+      .then((r) => r.json())
+      .then((data: GalleryItem[]) => setImages(data))
+      .catch(() => setImages([]))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(activeTab); }, [activeTab]);
+
+  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPendingFile(file);
+    const { dataUrl } = await compressImage(file);
+    setPreviewUrl(dataUrl);
+    e.target.value = "";
+  };
+
+  const onUpload = async () => {
+    if (!previewUrl) { toast("Please select an image first"); return; }
+    setUploading(true);
+    try {
+      const body = { title: form.title, alt: form.alt || form.title, category: activeTab, imageData: previewUrl, mimeType: "image/jpeg" };
+      const res = await fetch(`${API}/gallery-images`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Upload failed"); }
+      toast("Image uploaded successfully");
+      setForm({ title: "", alt: "" });
+      setPreviewUrl(null);
+      setPendingFile(null);
+      load(activeTab);
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const onDelete = async (id: string) => {
+    if (!confirm("Delete this photo?")) return;
+    try {
+      await fetch(`${API}/gallery-images/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${getToken()}` } });
+      toast("Photo deleted");
+      setImages((prev) => prev.filter((img) => img._id !== id));
+    } catch {
+      toast("Delete failed");
+    }
+  };
+
+  const imgSrc = (img: GalleryItem) =>
+    img.imageData.startsWith("data:") || img.imageData.startsWith("http") ? img.imageData : `data:${img.mimeType};base64,${img.imageData}`;
+
+  return (
+    <>
+      <DemoSectionHeader
+        breadcrumb="Dashboard · Gallery Manager"
+        title="Gallery Manager"
+        subtitle="Upload and manage photos shown on the school website gallery, student life, faculty, and about sections."
+      />
+
+      {/* Category Tabs */}
+      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1.5rem" }}>
+        {GALLERY_CATS.map((cat) => (
+          <button
+            key={cat.val}
+            type="button"
+            className={activeTab === cat.val ? "ap-btn-demo-primary" : "ap-filter"}
+            style={{ padding: "0.45rem 1rem", fontSize: "0.82rem" }}
+            onClick={() => setActiveTab(cat.val)}
+          >
+            {cat.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Upload Panel */}
+      <div className="ap-panel" style={{ marginBottom: "1.5rem", padding: "1.25rem" }}>
+        <h3 style={{ margin: "0 0 1rem", fontSize: "0.95rem", fontWeight: 600 }}>
+          Add Photo → <span style={{ color: "var(--ap-accent, #4f46e5)", fontWeight: 400 }}>{GALLERY_CATS.find((c) => c.val === activeTab)?.label}</span>
+        </h3>
+        <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "flex-start" }}>
+          {/* Preview box */}
+          <div
+            style={{ width: 140, height: 140, border: "2px dashed #d1d5db", borderRadius: 8, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", background: "#f9fafb", flexShrink: 0, position: "relative", cursor: "pointer" }}
+            onClick={() => document.getElementById("gal-file-input")?.click()}
+          >
+            {previewUrl
+              ? <img src={previewUrl} alt="preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              : <span style={{ color: "#9ca3af", fontSize: "0.8rem", textAlign: "center", padding: "0.5rem" }}>Click to<br />select photo</span>
+            }
+          </div>
+          <input id="gal-file-input" type="file" accept="image/*" style={{ display: "none" }} onChange={onFileChange} />
+
+          {/* Fields */}
+          <div style={{ flex: 1, minWidth: 200, display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            <input
+              className="ap-input"
+              placeholder="Title (optional)"
+              value={form.title}
+              onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
+            />
+            <input
+              className="ap-input"
+              placeholder="Alt text / description (optional)"
+              value={form.alt}
+              onChange={(e) => setForm((p) => ({ ...p, alt: e.target.value }))}
+            />
+            {pendingFile && <small style={{ color: "#6b7280" }}>{pendingFile.name} — will be compressed automatically</small>}
+            <button
+              type="button"
+              className="ap-btn-demo-primary"
+              onClick={onUpload}
+              disabled={uploading || !previewUrl}
+              style={{ alignSelf: "flex-start", opacity: uploading || !previewUrl ? 0.6 : 1 }}
+            >
+              {uploading ? "Uploading…" : "Upload Photo"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Existing Images */}
+      <div className="ap-panel" style={{ padding: "1.25rem" }}>
+        <h3 style={{ margin: "0 0 1rem", fontSize: "0.95rem", fontWeight: 600 }}>
+          Current Photos ({images.length})
+        </h3>
+        {loading ? (
+          <p style={{ color: "#9ca3af", textAlign: "center", padding: "2rem" }}>Loading…</p>
+        ) : images.length === 0 ? (
+          <p style={{ color: "#9ca3af", textAlign: "center", padding: "2rem" }}>No photos yet in this category. Upload one above.</p>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: "1rem" }}>
+            {images.map((img) => (
+              <div key={img._id} style={{ position: "relative", borderRadius: 8, overflow: "hidden", aspectRatio: "1", background: "#f3f4f6" }}>
+                <img
+                  src={imgSrc(img)}
+                  alt={img.alt || img.title}
+                  loading="lazy"
+                  onClick={() => setLightbox(imgSrc(img))}
+                  style={{ width: "100%", height: "100%", objectFit: "cover", cursor: "zoom-in", display: "block" }}
+                />
+                <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0)", transition: "background 0.2s", display: "flex", alignItems: "flex-end" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.35)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0)")}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onDelete(img._id)}
+                    style={{ position: "absolute", top: 6, right: 6, background: "#ef4444", border: "none", color: "#fff", width: 26, height: 26, borderRadius: "50%", fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}
+                  >×</button>
+                  {img.title && (
+                    <span style={{ padding: "0.3rem 0.5rem", fontSize: "0.7rem", color: "#fff", lineHeight: 1.3, textShadow: "0 1px 2px rgba(0,0,0,0.8)" }}>{img.title}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div
+          onClick={() => setLightbox(null)}
+          style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.9)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", cursor: "zoom-out" }}
+        >
+          <img src={lightbox} alt="preview" style={{ maxWidth: "90vw", maxHeight: "88vh", objectFit: "contain", borderRadius: 8 }} onClick={(e) => e.stopPropagation()} />
+          <button onClick={() => setLightbox(null)} style={{ position: "absolute", top: "1rem", right: "1rem", background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", width: 40, height: 40, borderRadius: "50%", fontSize: "1.4rem", cursor: "pointer" }}>×</button>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function AdminDemoView({ nav, toast }: { nav: NavKey; toast: ToastFn }) {
   const [rowDetail, setRowDetail] = useState<string | null>(null);
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>(teacherAttendanceDirectory[0].id);
@@ -1388,6 +1621,9 @@ export function AdminDemoView({ nav, toast }: { nav: NavKey; toast: ToastFn }) {
           </button>
         </>
       );
+
+    case "gallery":
+      return <GalleryManager toast={toast} />;
 
     case "settings":
       return <SettingsInteractive toast={toast} />;

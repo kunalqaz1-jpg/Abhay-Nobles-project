@@ -1118,7 +1118,7 @@ export default function SchoolWebsite() {
               ))}
             </div>
             <div style={{ textAlign: "center", marginTop: "2.5rem" }}>
-              <a href="#" className="btn btn-outline btn-lg">More photos</a>
+              <Link href="/gallery" className="btn btn-outline btn-lg">View Full Gallery →</Link>
             </div>
           </div>
         </section>

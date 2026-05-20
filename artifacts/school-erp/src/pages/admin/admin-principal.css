@@ -521,6 +521,23 @@
   color: var(--ap-muted);
 }
 
+.ap-input {
+  width: 100%;
+  padding: 0.55rem 0.85rem;
+  border-radius: 8px;
+  border: 1.5px solid var(--ap-border);
+  background: #f8fafc;
+  color: var(--ap-text, #1e293b);
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.ap-input:focus {
+  border-color: var(--ap-accent, #4f46e5);
+  background: #fff;
+}
+
 /* Middle row */
 .ap-mid-grid {
   display: grid;

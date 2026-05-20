@@ -340,3 +340,26 @@ const AnnouncementSchema = new Schema<IAnnouncement>({
 }, { timestamps: true });
 
 export const Announcement: Model<IAnnouncement> = mongoose.models.Announcement || mongoose.model<IAnnouncement>("Announcement", AnnouncementSchema);
+
+// ─── GALLERY IMAGES ───────────────────────────────────────────────────────────
+
+export interface IGalleryImage extends Document {
+  title: string;
+  alt: string;
+  category: string;
+  imageData: string;
+  mimeType: string;
+  sortOrder: number;
+  createdAt: Date;
+}
+
+const GalleryImageSchema = new Schema<IGalleryImage>({
+  title: { type: String, default: "" },
+  alt: { type: String, default: "" },
+  category: { type: String, required: true },
+  imageData: { type: String, required: true },
+  mimeType: { type: String, default: "image/jpeg" },
+  sortOrder: { type: Number, default: 0 },
+}, { timestamps: true });
+
+export const GalleryImage: Model<IGalleryImage> = mongoose.models.GalleryImage || mongoose.model<IGalleryImage>("GalleryImage", GalleryImageSchema);

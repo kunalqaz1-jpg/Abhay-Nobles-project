@@ -19,6 +19,7 @@ import {
   Admission,
   Contact,
   Announcement,
+  GalleryImage,
   type IStudent,
   type ITeacher,
 } from "@workspace/db";
@@ -583,6 +584,64 @@ router.post("/contacts", async (req, res) => {
 router.get("/announcements", async (_req, res) => {
   const rows = await Announcement.find({ isActive: true }).sort({ sortOrder: 1 });
   return res.json(rows.map((a) => ({ id: a._id, text: a.text, isActive: a.isActive, sortOrder: a.sortOrder })));
+});
+
+// ─── GALLERY IMAGES ───────────────────────────────────────────────────────────
+
+router.get("/gallery-images", async (req, res) => {
+  const { category, section } = req.query as { category?: string; section?: string };
+  let filter: Record<string, unknown> = {};
+  if (category) {
+    filter.category = category;
+  } else if (section) {
+    if (section === "gallery") {
+      filter.category = { $in: ["gallery-campus", "gallery-events", "gallery-sports", "gallery-cultural"] };
+    } else {
+      filter.category = section;
+    }
+  }
+  const rows = await GalleryImage.find(filter).sort({ sortOrder: 1, createdAt: -1 });
+  return res.json(rows.map((g) => ({
+    _id: g._id,
+    title: g.title,
+    alt: g.alt,
+    category: g.category,
+    imageData: g.imageData,
+    mimeType: g.mimeType,
+    sortOrder: g.sortOrder,
+    createdAt: (g.createdAt as Date).toISOString(),
+  })));
+});
+
+router.post("/gallery-images", requireAuth(["admin"]), async (req, res) => {
+  const { title, alt, category, imageData, mimeType, sortOrder } = req.body;
+  if (!category || !imageData) {
+    return res.status(400).json({ error: "category and imageData required" });
+  }
+  const inserted = await GalleryImage.create({
+    title: title ?? "",
+    alt: alt ?? title ?? "",
+    category,
+    imageData,
+    mimeType: mimeType ?? "image/jpeg",
+    sortOrder: sortOrder ?? 0,
+  });
+  return res.json({
+    _id: inserted._id,
+    title: inserted.title,
+    alt: inserted.alt,
+    category: inserted.category,
+    imageData: inserted.imageData,
+    mimeType: inserted.mimeType,
+    sortOrder: inserted.sortOrder,
+    createdAt: (inserted.createdAt as Date).toISOString(),
+  });
+});
+
+router.delete("/gallery-images/:id", requireAuth(["admin"]), async (req, res) => {
+  const { id } = req.params;
+  await GalleryImage.findByIdAndDelete(id);
+  return res.json({ success: true });
 });
 
 export default router;
