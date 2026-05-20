@@ -28,25 +28,25 @@ args = "Frontend"
 name = "API Server"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/api-server && PORT=8081 pnpm run dev"
-waitForPort = 8081
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=8080 pnpm --filter @workspace/api-server run dev"
+waitForPort = 8080
 
 [[workflows.workflow]]
 name = "Frontend"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/school-erp && PORT=8080 BASE_PATH=/ pnpm run dev"
-waitForPort = 8080
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=23757 BASE_PATH=/ pnpm --filter @workspace/school-erp run dev"
+waitForPort = 23757
 
 [agent]
 stack = "PNPM_WORKSPACE"
