@@ -3,24 +3,25 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 declare module "express-serve-static-core" {
   interface Request { session?: SessionInfo; }
 }
-import { db } from "@workspace/db";
+
 import {
-  studentsTable,
-  teachersTable,
-  adminUsersTable,
-  attendanceRecordsTable,
-  homeworkTable,
-  resultsTable,
-  noticesTable,
-  messagesTable,
-  studyMaterialsTable,
-  timetableTable,
-  eventsTable,
-  admissionsTable,
-  contactsTable,
-  announcementsTable,
-} from "@workspace/db/schema";
-import { eq, and, desc, isNull, or } from "drizzle-orm";
+  Student,
+  Teacher,
+  AdminUser,
+  AttendanceRecord,
+  Homework,
+  Result,
+  Notice,
+  Message,
+  StudyMaterial,
+  TimetableRow,
+  Event,
+  Admission,
+  Contact,
+  Announcement,
+  type IStudent,
+  type ITeacher,
+} from "@workspace/db";
 import bcryptjs from "bcryptjs";
 import { randomUUID } from "crypto";
 
@@ -57,7 +58,7 @@ function requireAuth(roles?: SessionInfo["role"][]) {
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-function formatStudent(s: typeof studentsTable.$inferSelect) {
+function formatStudent(s: IStudent) {
   return {
     studentId: s.studentId,
     fullName: s.fullName,
@@ -65,12 +66,12 @@ function formatStudent(s: typeof studentsTable.$inferSelect) {
     section: s.section,
     rollNo: s.rollNo,
     photo: s.photo,
-    parents: (s.parents as object[]) ?? [],
-    fees: (s.fees as object) ?? {},
+    parents: s.parents ?? [],
+    fees: s.fees ?? {},
   };
 }
 
-function formatTeacher(t: typeof teachersTable.$inferSelect) {
+function formatTeacher(t: ITeacher) {
   return {
     teacherId: t.teacherId,
     name: t.name,
@@ -78,22 +79,20 @@ function formatTeacher(t: typeof teachersTable.$inferSelect) {
     qualification: t.qualification,
     joinDate: t.joinDate,
     phone: t.phone,
-    assignedClasses: (t.assignedClasses as string[]) ?? [],
+    assignedClasses: t.assignedClasses ?? [],
   };
 }
 
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 
-// POST /students/login
 router.post("/students/login", async (req, res) => {
   const { username, password, studentId } = req.body;
   const loginId = username || studentId;
   if (!loginId || !password) {
     return res.status(400).json({ error: "studentId and password required" });
   }
-  const rows = await db.select().from(studentsTable).where(eq(studentsTable.studentId, loginId));
-  if (rows.length === 0) return res.status(401).json({ error: "Invalid student ID or password" });
-  const student = rows[0];
+  const student = await Student.findOne({ studentId: loginId });
+  if (!student) return res.status(401).json({ error: "Invalid student ID or password" });
   const valid = student.passwordHash.startsWith("$2")
     ? await bcryptjs.compare(password, student.passwordHash)
     : student.passwordHash === password;
@@ -102,13 +101,11 @@ router.post("/students/login", async (req, res) => {
   return res.json({ student: formatStudent(student), token });
 });
 
-// POST /teachers/login
 router.post("/teachers/login", async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: "username and password required" });
-  const rows = await db.select().from(teachersTable).where(eq(teachersTable.teacherId, username));
-  if (rows.length === 0) return res.status(401).json({ error: "Invalid teacher ID or password" });
-  const teacher = rows[0];
+  const teacher = await Teacher.findOne({ teacherId: username });
+  if (!teacher) return res.status(401).json({ error: "Invalid teacher ID or password" });
   const valid = teacher.passwordHash.startsWith("$2")
     ? await bcryptjs.compare(password, teacher.passwordHash)
     : teacher.passwordHash === password;
@@ -117,29 +114,27 @@ router.post("/teachers/login", async (req, res) => {
   return res.json({ ...formatTeacher(teacher), token });
 });
 
-// POST /admin/login
 router.post("/admin/login", async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: "username and password required" });
-  const rows = await db.select().from(adminUsersTable).where(eq(adminUsersTable.username, username));
-  if (rows.length === 0) return res.status(401).json({ error: "Invalid username or password" });
-  const admin = rows[0];
+  const admin = await AdminUser.findOne({ username });
+  if (!admin) return res.status(401).json({ error: "Invalid username or password" });
   const valid = admin.passwordHash.startsWith("$2")
     ? await bcryptjs.compare(password, admin.passwordHash)
     : admin.passwordHash === password;
   if (!valid) return res.status(401).json({ error: "Invalid username or password" });
   const token = createToken("admin", admin.username);
-  return res.json({ id: admin.id, username: admin.username, token });
+  return res.json({ id: admin._id, username: admin.username, token });
 });
 
 // ─── ADMIN DASHBOARD ─────────────────────────────────────────────────────────
 
 router.get("/admin/dashboard", requireAuth(["admin"]), async (_req, res) => {
   const [students, teachers, admissions, attendanceRows] = await Promise.all([
-    db.select().from(studentsTable),
-    db.select().from(teachersTable),
-    db.select().from(admissionsTable).orderBy(desc(admissionsTable.createdAt)).limit(5),
-    db.select().from(attendanceRecordsTable).orderBy(desc(attendanceRecordsTable.updatedAt)).limit(5),
+    Student.find(),
+    Teacher.find(),
+    Admission.find().sort({ createdAt: -1 }).limit(5),
+    AttendanceRecord.find().sort({ updatedAt: -1 }).limit(5),
   ]);
 
   const kpis = [
@@ -150,7 +145,7 @@ router.get("/admin/dashboard", requireAuth(["admin"]), async (_req, res) => {
   ];
 
   const recentAdmissions = admissions.map((a) => ({
-    id: a.id,
+    id: a._id,
     studentName: a.studentName,
     parentName: a.parentName,
     phone: a.phone,
@@ -166,67 +161,41 @@ router.get("/admin/dashboard", requireAuth(["admin"]), async (_req, res) => {
     date: r.date,
     teacherName: r.teacherName,
     updatedAt: r.updatedAt.toISOString(),
-    entries: (r.entries as object[]) ?? [],
+    entries: r.entries ?? [],
   }));
 
-  return res.json({
-    kpis,
-    recentAdmissions,
-    recentAttendance,
-    recentFees: [],
-  });
+  return res.json({ kpis, recentAdmissions, recentAttendance, recentFees: [] });
 });
 
 // ─── STUDENTS ────────────────────────────────────────────────────────────────
 
 router.get("/students", async (_req, res) => {
-  const rows = await db.select().from(studentsTable).orderBy(studentsTable.fullName);
+  const rows = await Student.find().sort({ fullName: 1 });
   return res.json(rows.map(formatStudent));
 });
 
 router.post("/students", requireAuth(["admin"]), async (req, res) => {
-  const {
-    studentId, fullName, className, section, rollNo, photo, parents, fees, password,
-  } = req.body;
+  const { studentId, fullName, className, section, rollNo, photo, parents, fees, password } = req.body;
   if (!studentId || !fullName) {
     return res.status(400).json({ error: "studentId and fullName required" });
   }
 
-  const existing = await db.select().from(studentsTable).where(eq(studentsTable.studentId, studentId));
-  if (existing.length > 0) {
-    const updated = await db
-      .update(studentsTable)
-      .set({
-        fullName,
-        className,
-        section,
-        rollNo,
-        photo: photo ?? "",
-        parents: parents ?? [],
-        fees: fees ?? {},
-        ...(password ? { passwordHash: await bcryptjs.hash(password, 10) } : {}),
-        updatedAt: new Date(),
-      })
-      .where(eq(studentsTable.studentId, studentId))
-      .returning();
-    return res.json(formatStudent(updated[0]));
+  const existing = await Student.findOne({ studentId });
+  if (existing) {
+    const updates: Record<string, unknown> = { fullName, className, section, rollNo, photo: photo ?? "", parents: parents ?? [], fees: fees ?? {} };
+    if (password) updates.passwordHash = await bcryptjs.hash(password, 10);
+    const updated = await Student.findOneAndUpdate({ studentId }, updates, { new: true });
+    return res.json(formatStudent(updated!));
   }
 
-  const inserted = await db
-    .insert(studentsTable)
-    .values({
-      studentId,
-      fullName,
-      className,
-      section,
-      rollNo,
-      photo: photo ?? "",
-      passwordHash: password ? await bcryptjs.hash(password, 10) : "",
-      parents: parents ?? [],
-      fees: fees ?? {},
-    })
-    .returning();
-  return res.json(formatStudent(inserted[0]));
+  const inserted = await Student.create({
+    studentId, fullName, className, section, rollNo,
+    photo: photo ?? "",
+    passwordHash: password ? await bcryptjs.hash(password, 10) : "",
+    parents: parents ?? [],
+    fees: fees ?? {},
+  });
+  return res.json(formatStudent(inserted));
 });
 
 router.get("/students/:studentId/dashboard", requireAuth(["student"]), async (req, res) => {
@@ -234,21 +203,18 @@ router.get("/students/:studentId/dashboard", requireAuth(["student"]), async (re
   if (req.session!.id !== studentId) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  const rows = await db.select().from(studentsTable).where(eq(studentsTable.studentId, studentId));
-  if (rows.length === 0) {
-    return res.status(404).json({ error: "Student not found" });
-  }
-  const student = rows[0];
+  const student = await Student.findOne({ studentId });
+  if (!student) return res.status(404).json({ error: "Student not found" });
   const cls = student.className;
 
   const [homework, results, notices, timetable, events, messages, materials] = await Promise.all([
-    db.select().from(homeworkTable).where(eq(homeworkTable.className, cls)).orderBy(desc(homeworkTable.createdTs)).limit(10),
-    db.select().from(resultsTable).where(eq(resultsTable.className, cls)).orderBy(desc(resultsTable.createdTs)).limit(10),
-    db.select().from(noticesTable).orderBy(desc(noticesTable.createdTs)).limit(10),
-    db.select().from(timetableTable).where(eq(timetableTable.className, cls)),
-    db.select().from(eventsTable).orderBy(desc(eventsTable.createdTs)).limit(10),
-    db.select().from(messagesTable).where(eq(messagesTable.className, cls)).orderBy(desc(messagesTable.sentTs)).limit(10),
-    db.select().from(studyMaterialsTable).where(eq(studyMaterialsTable.className, cls)).orderBy(desc(studyMaterialsTable.updatedTs)).limit(10),
+    Homework.find({ className: cls }).sort({ createdTs: -1 }).limit(10),
+    Result.find({ className: cls }).sort({ createdTs: -1 }).limit(10),
+    Notice.find().sort({ createdTs: -1 }).limit(10),
+    TimetableRow.find({ className: cls }),
+    Event.find().sort({ createdTs: -1 }).limit(10),
+    Message.find({ className: cls }).sort({ sentTs: -1 }).limit(10),
+    StudyMaterial.find({ className: cls }).sort({ updatedTs: -1 }).limit(10),
   ]);
 
   return res.json({
@@ -305,21 +271,15 @@ router.get("/students/:studentId/dashboard", requireAuth(["student"]), async (re
 router.post("/students/:studentId/fees", requireAuth(["admin"]), async (req, res) => {
   const { studentId } = req.params;
   const { fees } = req.body;
-  const updated = await db
-    .update(studentsTable)
-    .set({ fees, updatedAt: new Date() })
-    .where(eq(studentsTable.studentId, studentId))
-    .returning();
-  if (updated.length === 0) {
-    return res.status(404).json({ error: "Student not found" });
-  }
-  return res.json(formatStudent(updated[0]));
+  const updated = await Student.findOneAndUpdate({ studentId }, { fees }, { new: true });
+  if (!updated) return res.status(404).json({ error: "Student not found" });
+  return res.json(formatStudent(updated));
 });
 
 // ─── TEACHERS ────────────────────────────────────────────────────────────────
 
 router.get("/teachers", async (_req, res) => {
-  const rows = await db.select().from(teachersTable).orderBy(teachersTable.name);
+  const rows = await Teacher.find().sort({ name: 1 });
   return res.json(rows.map(formatTeacher));
 });
 
@@ -329,80 +289,52 @@ router.post("/teachers", requireAuth(["admin"]), async (req, res) => {
     return res.status(400).json({ error: "teacherId and name required" });
   }
 
-  const existing = await db.select().from(teachersTable).where(eq(teachersTable.teacherId, teacherId));
-  if (existing.length > 0) {
-    const updated = await db
-      .update(teachersTable)
-      .set({
-        name, subject, qualification, joinDate, phone,
-        assignedClasses: assignedClasses ?? [],
-        ...(password ? { passwordHash: await bcryptjs.hash(password, 10) } : {}),
-        updatedAt: new Date(),
-      })
-      .where(eq(teachersTable.teacherId, teacherId))
-      .returning();
-    return res.json(formatTeacher(updated[0]));
+  const existing = await Teacher.findOne({ teacherId });
+  if (existing) {
+    const updates: Record<string, unknown> = { name, subject, qualification, joinDate, phone, assignedClasses: assignedClasses ?? [] };
+    if (password) updates.passwordHash = await bcryptjs.hash(password, 10);
+    const updated = await Teacher.findOneAndUpdate({ teacherId }, updates, { new: true });
+    return res.json(formatTeacher(updated!));
   }
 
-  const inserted = await db
-    .insert(teachersTable)
-    .values({
-      teacherId, name, subject, qualification, joinDate, phone,
-      passwordHash: password ? await bcryptjs.hash(password, 10) : "",
-      assignedClasses: assignedClasses ?? [],
-    })
-    .returning();
-  return res.json(formatTeacher(inserted[0]));
+  const inserted = await Teacher.create({
+    teacherId, name, subject, qualification, joinDate, phone,
+    passwordHash: password ? await bcryptjs.hash(password, 10) : "",
+    assignedClasses: assignedClasses ?? [],
+  });
+  return res.json(formatTeacher(inserted));
 });
 
 // ─── ATTENDANCE ───────────────────────────────────────────────────────────────
 
 router.post("/attendance/class", requireAuth(["teacher", "admin"]), async (req, res) => {
-  const { className, date, teacherName, updatedAt, entries } = req.body;
+  const { className, date, teacherName, entries } = req.body;
 
-  const existing = await db
-    .select()
-    .from(attendanceRecordsTable)
-    .where(and(eq(attendanceRecordsTable.className, className), eq(attendanceRecordsTable.date, date)));
-
-  if (existing.length > 0) {
-    const updated = await db
-      .update(attendanceRecordsTable)
-      .set({ teacherName, entries, updatedAt: new Date() })
-      .where(eq(attendanceRecordsTable.id, existing[0].id))
-      .returning();
-    const r = updated[0];
+  const existing = await AttendanceRecord.findOne({ className, date });
+  if (existing) {
+    const updated = await AttendanceRecord.findOneAndUpdate(
+      { className, date },
+      { teacherName, entries },
+      { new: true }
+    );
+    const r = updated!;
     return res.json({ className: r.className, date: r.date, teacherName: r.teacherName, updatedAt: r.updatedAt.toISOString(), entries: r.entries });
   }
 
-  const inserted = await db
-    .insert(attendanceRecordsTable)
-    .values({ className, date, teacherName, entries })
-    .returning();
-  const r = inserted[0];
-  return res.json({ className: r.className, date: r.date, teacherName: r.teacherName, updatedAt: r.updatedAt.toISOString(), entries: r.entries });
+  const inserted = await AttendanceRecord.create({ className, date, teacherName, entries });
+  return res.json({ className: inserted.className, date: inserted.date, teacherName: inserted.teacherName, updatedAt: inserted.updatedAt.toISOString(), entries: inserted.entries });
 });
 
 router.get("/attendance/class", async (req, res) => {
   const { className, date } = req.query as { className: string; date: string };
-  const rows = await db
-    .select()
-    .from(attendanceRecordsTable)
-    .where(and(eq(attendanceRecordsTable.className, className), eq(attendanceRecordsTable.date, date)));
-  if (rows.length === 0) {
-    return res.status(404).json({ error: "No attendance record found" });
-  }
-  const r = rows[0];
+  const r = await AttendanceRecord.findOne({ className, date });
+  if (!r) return res.status(404).json({ error: "No attendance record found" });
   return res.json({ className: r.className, date: r.date, teacherName: r.teacherName, updatedAt: r.updatedAt.toISOString(), entries: r.entries });
 });
 
 router.get("/attendance/student/:studentId/latest", async (req, res) => {
   const { studentId } = req.params;
-  const rows = await db
-    .select()
-    .from(attendanceRecordsTable)
-    .orderBy(desc(attendanceRecordsTable.updatedAt))
-    .limit(50);
+  const rows = await AttendanceRecord.find().sort({ updatedAt: -1 }).limit(50);
 
   for (const record of rows) {
     const entries = (record.entries as Array<{ studentId: string; studentName: string; status: string; remark: string }>) ?? [];
@@ -422,37 +354,25 @@ router.get("/attendance/student/:studentId/latest", async (req, res) => {
 router.post("/homework", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { id, className, section, subject, title, description, dueDate, fileName, teacherName, createdAt } = req.body;
 
-  const existing = await db.select().from(homeworkTable).where(eq(homeworkTable.hwId, id));
-  if (existing.length > 0) {
-    const updated = await db
-      .update(homeworkTable)
-      .set({ className, section, subject, title, description, dueDate, fileName, teacherName, createdAt })
-      .where(eq(homeworkTable.hwId, id))
-      .returning();
-    const h = updated[0];
+  const existing = await Homework.findOne({ hwId: id });
+  if (existing) {
+    const updated = await Homework.findOneAndUpdate(
+      { hwId: id },
+      { className, section, subject, title, description, dueDate, fileName, teacherName, createdAt },
+      { new: true }
+    );
+    const h = updated!;
     return res.json({ id: h.hwId, className: h.className, section: h.section, subject: h.subject, title: h.title, description: h.description, dueDate: h.dueDate, fileName: h.fileName, teacherName: h.teacherName, createdAt: h.createdAt });
   }
 
-  const inserted = await db
-    .insert(homeworkTable)
-    .values({ hwId: id, className, section, subject, title, description, dueDate, fileName, teacherName, createdAt })
-    .returning();
-  const h = inserted[0];
-  return res.json({ id: h.hwId, className: h.className, section: h.section, subject: h.subject, title: h.title, description: h.description, dueDate: h.dueDate, fileName: h.fileName, teacherName: h.teacherName, createdAt: h.createdAt });
+  const inserted = await Homework.create({ hwId: id, className, section, subject, title, description, dueDate, fileName, teacherName, createdAt });
+  return res.json({ id: inserted.hwId, className: inserted.className, section: inserted.section, subject: inserted.subject, title: inserted.title, description: inserted.description, dueDate: inserted.dueDate, fileName: inserted.fileName, teacherName: inserted.teacherName, createdAt: inserted.createdAt });
 });
 
 router.get("/homework/latest/:className", async (req, res) => {
   const className = decodeURIComponent(req.params.className);
-  const rows = await db
-    .select()
-    .from(homeworkTable)
-    .where(eq(homeworkTable.className, className))
-    .orderBy(desc(homeworkTable.createdTs))
-    .limit(1);
-  if (rows.length === 0) {
-    return res.status(404).json({ error: "No homework found" });
-  }
-  const h = rows[0];
+  const h = await Homework.findOne({ className }).sort({ createdTs: -1 });
+  if (!h) return res.status(404).json({ error: "No homework found" });
   return res.json({ id: h.hwId, className: h.className, section: h.section, subject: h.subject, title: h.title, description: h.description, dueDate: h.dueDate, fileName: h.fileName, teacherName: h.teacherName, createdAt: h.createdAt });
 });
 
@@ -461,41 +381,27 @@ router.get("/homework/latest/:className", async (req, res) => {
 router.post("/results", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { id, className, section, subject, examType, unitTestNumber, title, fileName, targetRollNo, teacherName, createdAt } = req.body;
 
-  const existing = await db.select().from(resultsTable).where(eq(resultsTable.resultId, id));
-  if (existing.length > 0) {
-    const updated = await db
-      .update(resultsTable)
-      .set({ className, section, subject, examType, unitTestNumber: unitTestNumber ?? null, title, fileName, targetRollNo: targetRollNo ?? null, teacherName, createdAt })
-      .where(eq(resultsTable.resultId, id))
-      .returning();
-    const r = updated[0];
+  const existing = await Result.findOne({ resultId: id });
+  if (existing) {
+    const updated = await Result.findOneAndUpdate(
+      { resultId: id },
+      { className, section, subject, examType, unitTestNumber: unitTestNumber ?? null, title, fileName, targetRollNo: targetRollNo ?? null, teacherName, createdAt },
+      { new: true }
+    );
+    const r = updated!;
     return res.json({ id: r.resultId, className: r.className, section: r.section, subject: r.subject, examType: r.examType, unitTestNumber: r.unitTestNumber, title: r.title, fileName: r.fileName, targetRollNo: r.targetRollNo, teacherName: r.teacherName, createdAt: r.createdAt });
   }
 
-  const inserted = await db
-    .insert(resultsTable)
-    .values({ resultId: id, className, section, subject, examType, unitTestNumber: unitTestNumber ?? null, title, fileName, targetRollNo: targetRollNo ?? null, teacherName, createdAt })
-    .returning();
-  const r = inserted[0];
-  return res.json({ id: r.resultId, className: r.className, section: r.section, subject: r.subject, examType: r.examType, unitTestNumber: r.unitTestNumber, title: r.title, fileName: r.fileName, targetRollNo: r.targetRollNo, teacherName: r.teacherName, createdAt: r.createdAt });
+  const inserted = await Result.create({ resultId: id, className, section, subject, examType, unitTestNumber: unitTestNumber ?? null, title, fileName: fileName ?? "", targetRollNo: targetRollNo ?? null, teacherName, createdAt });
+  return res.json({ id: inserted.resultId, className: inserted.className, section: inserted.section, subject: inserted.subject, examType: inserted.examType, unitTestNumber: inserted.unitTestNumber, title: inserted.title, fileName: inserted.fileName, targetRollNo: inserted.targetRollNo, teacherName: inserted.teacherName, createdAt: inserted.createdAt });
 });
 
 router.get("/results/latest", async (req, res) => {
   const { className, rollNo } = req.query as { className: string; rollNo?: string };
-  const conditions = [eq(resultsTable.className, className)];
-  if (rollNo) {
-    conditions.push(eq(resultsTable.targetRollNo, rollNo));
-  }
-  const rows = await db
-    .select()
-    .from(resultsTable)
-    .where(and(...conditions))
-    .orderBy(desc(resultsTable.createdTs))
-    .limit(1);
-  if (rows.length === 0) {
-    return res.status(404).json({ error: "No results found" });
-  }
-  const r = rows[0];
+  const filter: Record<string, unknown> = { className };
+  if (rollNo) filter.targetRollNo = rollNo;
+  const r = await Result.findOne(filter).sort({ createdTs: -1 });
+  if (!r) return res.status(404).json({ error: "No results found" });
   return res.json({ id: r.resultId, className: r.className, section: r.section, subject: r.subject, examType: r.examType, unitTestNumber: r.unitTestNumber, title: r.title, fileName: r.fileName, targetRollNo: r.targetRollNo, teacherName: r.teacherName, createdAt: r.createdAt });
 });
 
@@ -505,11 +411,11 @@ router.get("/notices", async (req, res) => {
   const { className } = req.query as { className?: string };
   let rows;
   if (className) {
-    rows = await db.select().from(noticesTable)
-      .where(or(eq(noticesTable.className, className), eq(noticesTable.className, ""), eq(noticesTable.audience, "all")))
-      .orderBy(desc(noticesTable.createdTs));
+    rows = await Notice.find({
+      $or: [{ className }, { className: "" }, { audience: "all" }],
+    }).sort({ createdTs: -1 });
   } else {
-    rows = await db.select().from(noticesTable).orderBy(desc(noticesTable.createdTs));
+    rows = await Notice.find().sort({ createdTs: -1 });
   }
   return res.json(rows.map((n) => ({ id: n.noticeId, title: n.title, description: n.description, audience: n.audience, className: n.className, teacherName: n.teacherName, createdAt: n.createdAt })));
 });
@@ -517,23 +423,19 @@ router.get("/notices", async (req, res) => {
 router.post("/notices", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { id, title, description, audience, className, teacherName, createdAt } = req.body;
 
-  const existing = await db.select().from(noticesTable).where(eq(noticesTable.noticeId, id));
-  if (existing.length > 0) {
-    const updated = await db
-      .update(noticesTable)
-      .set({ title, description, audience, className, teacherName, createdAt })
-      .where(eq(noticesTable.noticeId, id))
-      .returning();
-    const n = updated[0];
+  const existing = await Notice.findOne({ noticeId: id });
+  if (existing) {
+    const updated = await Notice.findOneAndUpdate(
+      { noticeId: id },
+      { title, description, audience, className, teacherName, createdAt },
+      { new: true }
+    );
+    const n = updated!;
     return res.json({ id: n.noticeId, title: n.title, description: n.description, audience: n.audience, className: n.className, teacherName: n.teacherName, createdAt: n.createdAt });
   }
 
-  const inserted = await db
-    .insert(noticesTable)
-    .values({ noticeId: id, title, description, audience: audience ?? "all", className: className ?? "", teacherName, createdAt })
-    .returning();
-  const n = inserted[0];
-  return res.json({ id: n.noticeId, title: n.title, description: n.description, audience: n.audience, className: n.className, teacherName: n.teacherName, createdAt: n.createdAt });
+  const inserted = await Notice.create({ noticeId: id, title, description, audience: audience ?? "all", className: className ?? "", teacherName, createdAt });
+  return res.json({ id: inserted.noticeId, title: inserted.title, description: inserted.description, audience: inserted.audience, className: inserted.className, teacherName: inserted.teacherName, createdAt: inserted.createdAt });
 });
 
 // ─── MESSAGES ────────────────────────────────────────────────────────────────
@@ -542,9 +444,9 @@ router.get("/messages", async (req, res) => {
   const { className, studentId } = req.query as { className?: string; studentId?: string };
   let rows;
   if (className) {
-    rows = await db.select().from(messagesTable).where(eq(messagesTable.className, className)).orderBy(desc(messagesTable.sentTs));
+    rows = await Message.find({ className }).sort({ sentTs: -1 });
   } else {
-    rows = await db.select().from(messagesTable).orderBy(desc(messagesTable.sentTs));
+    rows = await Message.find().sort({ sentTs: -1 });
   }
   if (studentId) {
     rows = rows.filter((m) => !m.studentId || m.studentId === studentId);
@@ -555,17 +457,13 @@ router.get("/messages", async (req, res) => {
 router.post("/messages", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { id, subject, body, audience, className, studentId, studentName, teacherName, sentAt } = req.body;
 
-  const existing = await db.select().from(messagesTable).where(eq(messagesTable.messageId, id));
-  if (existing.length > 0) {
+  const existing = await Message.findOne({ messageId: id });
+  if (existing) {
     return res.json({ id, subject, body, audience, className, studentId, studentName, teacherName, sentAt });
   }
 
-  const inserted = await db
-    .insert(messagesTable)
-    .values({ messageId: id, subject, body, audience: audience ?? "class", className: className ?? "", studentId: studentId ?? null, studentName: studentName ?? null, teacherName, sentAt })
-    .returning();
-  const m = inserted[0];
-  return res.json({ id: m.messageId, subject: m.subject, body: m.body, audience: m.audience, className: m.className, studentId: m.studentId, studentName: m.studentName, teacherName: m.teacherName, sentAt: m.sentAt });
+  const inserted = await Message.create({ messageId: id, subject, body, audience: audience ?? "class", className: className ?? "", studentId: studentId ?? null, studentName: studentName ?? null, teacherName, sentAt });
+  return res.json({ id: inserted.messageId, subject: inserted.subject, body: inserted.body, audience: inserted.audience, className: inserted.className, studentId: inserted.studentId, studentName: inserted.studentName, teacherName: inserted.teacherName, sentAt: inserted.sentAt });
 });
 
 // ─── STUDY MATERIALS ─────────────────────────────────────────────────────────
@@ -574,9 +472,9 @@ router.get("/materials", async (req, res) => {
   const { className } = req.query as { className?: string };
   let rows;
   if (className) {
-    rows = await db.select().from(studyMaterialsTable).where(eq(studyMaterialsTable.className, className)).orderBy(desc(studyMaterialsTable.updatedTs));
+    rows = await StudyMaterial.find({ className }).sort({ updatedTs: -1 });
   } else {
-    rows = await db.select().from(studyMaterialsTable).orderBy(desc(studyMaterialsTable.updatedTs));
+    rows = await StudyMaterial.find().sort({ updatedTs: -1 });
   }
   return res.json(rows.map((m) => ({ id: m.materialId, title: m.title, className: m.className, fileName: m.fileName, videoUrl: m.videoUrl, resourceType: m.resourceType, updatedAt: m.updatedAt })));
 });
@@ -584,58 +482,47 @@ router.get("/materials", async (req, res) => {
 router.post("/materials", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { id, title, className, fileName, videoUrl, resourceType, updatedAt } = req.body;
 
-  const existing = await db.select().from(studyMaterialsTable).where(eq(studyMaterialsTable.materialId, id));
-  if (existing.length > 0) {
-    const updated = await db
-      .update(studyMaterialsTable)
-      .set({ title, className, fileName, videoUrl, resourceType, updatedAt, updatedTs: new Date() })
-      .where(eq(studyMaterialsTable.materialId, id))
-      .returning();
-    const m = updated[0];
+  const existing = await StudyMaterial.findOne({ materialId: id });
+  if (existing) {
+    const updated = await StudyMaterial.findOneAndUpdate(
+      { materialId: id },
+      { title, className, fileName, videoUrl, resourceType, updatedAt },
+      { new: true }
+    );
+    const m = updated!;
     return res.json({ id: m.materialId, title: m.title, className: m.className, fileName: m.fileName, videoUrl: m.videoUrl, resourceType: m.resourceType, updatedAt: m.updatedAt });
   }
 
-  const inserted = await db
-    .insert(studyMaterialsTable)
-    .values({ materialId: id, title, className, fileName: fileName ?? "", videoUrl: videoUrl ?? "", resourceType, updatedAt })
-    .returning();
-  const m = inserted[0];
-  return res.json({ id: m.materialId, title: m.title, className: m.className, fileName: m.fileName, videoUrl: m.videoUrl, resourceType: m.resourceType, updatedAt: m.updatedAt });
+  const inserted = await StudyMaterial.create({ materialId: id, title, className, fileName: fileName ?? "", videoUrl: videoUrl ?? "", resourceType, updatedAt });
+  return res.json({ id: inserted.materialId, title: inserted.title, className: inserted.className, fileName: inserted.fileName, videoUrl: inserted.videoUrl, resourceType: inserted.resourceType, updatedAt: inserted.updatedAt });
 });
 
 // ─── TIMETABLE ───────────────────────────────────────────────────────────────
 
 router.get("/timetable", async (req, res) => {
   const { className } = req.query as { className?: string };
-  let rows;
-  if (className) {
-    rows = await db.select().from(timetableTable).where(eq(timetableTable.className, className));
-  } else {
-    rows = await db.select().from(timetableTable);
-  }
+  const rows = className
+    ? await TimetableRow.find({ className })
+    : await TimetableRow.find();
   return res.json(rows.map((t) => ({ id: t.rowId, className: t.className, period: t.period, subject: t.subject, time: t.time, updatedAt: t.updatedAt })));
 });
 
 router.post("/timetable", requireAuth(["admin"]), async (req, res) => {
   const { id, className, period, subject, time, updatedAt } = req.body;
 
-  const existing = await db.select().from(timetableTable).where(eq(timetableTable.rowId, id));
-  if (existing.length > 0) {
-    const updated = await db
-      .update(timetableTable)
-      .set({ className, period, subject, time, updatedAt, updatedTs: new Date() })
-      .where(eq(timetableTable.rowId, id))
-      .returning();
-    const t = updated[0];
+  const existing = await TimetableRow.findOne({ rowId: id });
+  if (existing) {
+    const updated = await TimetableRow.findOneAndUpdate(
+      { rowId: id },
+      { className, period, subject, time, updatedAt },
+      { new: true }
+    );
+    const t = updated!;
     return res.json({ id: t.rowId, className: t.className, period: t.period, subject: t.subject, time: t.time, updatedAt: t.updatedAt });
   }
 
-  const inserted = await db
-    .insert(timetableTable)
-    .values({ rowId: id, className, period, subject, time, updatedAt })
-    .returning();
-  const t = inserted[0];
-  return res.json({ id: t.rowId, className: t.className, period: t.period, subject: t.subject, time: t.time, updatedAt: t.updatedAt });
+  const inserted = await TimetableRow.create({ rowId: id, className, period, subject, time, updatedAt });
+  return res.json({ id: inserted.rowId, className: inserted.className, period: inserted.period, subject: inserted.subject, time: inserted.time, updatedAt: inserted.updatedAt });
 });
 
 // ─── EVENTS ──────────────────────────────────────────────────────────────────
@@ -644,11 +531,9 @@ router.get("/events", async (req, res) => {
   const { className } = req.query as { className?: string };
   let rows;
   if (className) {
-    rows = await db.select().from(eventsTable)
-      .where(or(eq(eventsTable.className, className), eq(eventsTable.className, "")))
-      .orderBy(desc(eventsTable.createdTs));
+    rows = await Event.find({ $or: [{ className }, { className: "" }] }).sort({ createdTs: -1 });
   } else {
-    rows = await db.select().from(eventsTable).orderBy(desc(eventsTable.createdTs));
+    rows = await Event.find().sort({ createdTs: -1 });
   }
   return res.json(rows.map((e) => ({ id: e.eventId, className: e.className, title: e.title, description: e.description, eventDate: e.eventDate, teacherName: e.teacherName, createdAt: e.createdAt })));
 });
@@ -656,23 +541,19 @@ router.get("/events", async (req, res) => {
 router.post("/events", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { id, className, title, description, eventDate, teacherName, createdAt } = req.body;
 
-  const existing = await db.select().from(eventsTable).where(eq(eventsTable.eventId, id));
-  if (existing.length > 0) {
-    const updated = await db
-      .update(eventsTable)
-      .set({ className, title, description, eventDate, teacherName, createdAt })
-      .where(eq(eventsTable.eventId, id))
-      .returning();
-    const e = updated[0];
+  const existing = await Event.findOne({ eventId: id });
+  if (existing) {
+    const updated = await Event.findOneAndUpdate(
+      { eventId: id },
+      { className, title, description, eventDate, teacherName, createdAt },
+      { new: true }
+    );
+    const e = updated!;
     return res.json({ id: e.eventId, className: e.className, title: e.title, description: e.description, eventDate: e.eventDate, teacherName: e.teacherName, createdAt: e.createdAt });
   }
 
-  const inserted = await db
-    .insert(eventsTable)
-    .values({ eventId: id, className: className ?? "", title, description: description ?? "", eventDate, teacherName, createdAt })
-    .returning();
-  const e = inserted[0];
-  return res.json({ id: e.eventId, className: e.className, title: e.title, description: e.description, eventDate: e.eventDate, teacherName: e.teacherName, createdAt: e.createdAt });
+  const inserted = await Event.create({ eventId: id, className: className ?? "", title, description: description ?? "", eventDate, teacherName, createdAt });
+  return res.json({ id: inserted.eventId, className: inserted.className, title: inserted.title, description: inserted.description, eventDate: inserted.eventDate, teacherName: inserted.teacherName, createdAt: inserted.createdAt });
 });
 
 // ─── ADMISSIONS ──────────────────────────────────────────────────────────────
@@ -682,12 +563,8 @@ router.post("/admissions", async (req, res) => {
   if (!studentName || !phone) {
     return res.status(400).json({ error: "studentName and phone required" });
   }
-  const inserted = await db
-    .insert(admissionsTable)
-    .values({ studentName, parentName: parentName ?? "", phone, email: email ?? "", classApplied: classApplied ?? "", message: message ?? "" })
-    .returning();
-  const a = inserted[0];
-  return res.json({ id: a.id, studentName: a.studentName, parentName: a.parentName, phone: a.phone, email: a.email, classApplied: a.classApplied, message: a.message, status: a.status, createdAt: a.createdAt.toISOString() });
+  const inserted = await Admission.create({ studentName, parentName: parentName ?? "", phone, email: email ?? "", classApplied: classApplied ?? "", message: message ?? "" });
+  return res.json({ id: inserted._id, studentName: inserted.studentName, parentName: inserted.parentName, phone: inserted.phone, email: inserted.email, classApplied: inserted.classApplied, message: inserted.message, status: inserted.status, createdAt: inserted.createdAt.toISOString() });
 });
 
 // ─── CONTACTS ────────────────────────────────────────────────────────────────
@@ -697,23 +574,15 @@ router.post("/contacts", async (req, res) => {
   if (!fullName || !message) {
     return res.status(400).json({ error: "fullName and message required" });
   }
-  const inserted = await db
-    .insert(contactsTable)
-    .values({ fullName, phone: phone ?? "", email: email ?? "", subject: subject ?? "", message })
-    .returning();
-  const c = inserted[0];
-  return res.json({ id: c.id, fullName: c.fullName, phone: c.phone, email: c.email, subject: c.subject, message: c.message, createdAt: c.createdAt.toISOString() });
+  const inserted = await Contact.create({ fullName, phone: phone ?? "", email: email ?? "", subject: subject ?? "", message });
+  return res.json({ id: inserted._id, fullName: inserted.fullName, phone: inserted.phone, email: inserted.email, subject: inserted.subject, message: inserted.message, createdAt: inserted.createdAt.toISOString() });
 });
 
 // ─── ANNOUNCEMENTS ───────────────────────────────────────────────────────────
 
 router.get("/announcements", async (_req, res) => {
-  const rows = await db
-    .select()
-    .from(announcementsTable)
-    .where(eq(announcementsTable.isActive, true))
-    .orderBy(announcementsTable.sortOrder);
-  return res.json(rows.map((a) => ({ id: a.id, text: a.text, isActive: a.isActive, sortOrder: a.sortOrder })));
+  const rows = await Announcement.find({ isActive: true }).sort({ sortOrder: 1 });
+  return res.json(rows.map((a) => ({ id: a._id, text: a.text, isActive: a.isActive, sortOrder: a.sortOrder })));
 });
 
 export default router;
