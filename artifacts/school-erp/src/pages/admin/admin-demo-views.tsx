@@ -844,15 +844,24 @@ function compressImage(file: File, maxPx = 1400, quality = 0.82): Promise<{ data
   });
 }
 
+interface QueueItem {
+  id: string;
+  file: File;
+  dataUrl: string;
+  title: string;
+  status: "pending" | "uploading" | "done" | "error";
+  errorMsg?: string;
+}
+
 function GalleryManager({ toast }: { toast: (msg: string) => void }) {
   const [activeTab, setActiveTab] = useState<string>("gallery-campus");
   const [images, setImages] = useState<GalleryItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [form, setForm] = useState({ title: "", alt: "" });
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const fileInputRef = { current: null as HTMLInputElement | null };
 
   const API = (import.meta.env.VITE_API_BASE_URL as string) || "/api";
   const SESSION_KEY = "admin_session";
@@ -869,37 +878,86 @@ function GalleryManager({ toast }: { toast: (msg: string) => void }) {
 
   useEffect(() => { load(activeTab); }, [activeTab]);
 
-  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setPendingFile(file);
-    const { dataUrl } = await compressImage(file);
-    setPreviewUrl(dataUrl);
+  const addFiles = async (files: FileList | File[]) => {
+    const arr = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    if (!arr.length) return;
+    const newItems: QueueItem[] = await Promise.all(
+      arr.map(async (file) => {
+        const { dataUrl } = await compressImage(file);
+        return {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          file,
+          dataUrl,
+          title: file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "),
+          status: "pending" as const,
+        };
+      })
+    );
+    setQueue((prev) => [...prev, ...newItems]);
+  };
+
+  const onFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.length) addFiles(e.target.files);
     e.target.value = "";
   };
 
-  const onUpload = async () => {
-    if (!previewUrl) { toast("Please select an image first"); return; }
-    setUploading(true);
-    try {
-      const body = { title: form.title, alt: form.alt || form.title, category: activeTab, imageData: previewUrl, mimeType: "image/jpeg" };
-      const res = await fetch(`${API}/gallery-images`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Upload failed"); }
-      toast("Image uploaded successfully");
-      setForm({ title: "", alt: "" });
-      setPreviewUrl(null);
-      setPendingFile(null);
-      load(activeTab);
-    } catch (err: unknown) {
-      toast(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setUploading(false);
-    }
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
   };
+
+  const removeFromQueue = (id: string) => setQueue((prev) => prev.filter((q) => q.id !== id));
+
+  const updateQueueTitle = (id: string, title: string) =>
+    setQueue((prev) => prev.map((q) => (q.id === id ? { ...q, title } : q)));
+
+  const uploadAll = async () => {
+    const pending = queue.filter((q) => q.status === "pending");
+    if (!pending.length) { toast("No photos queued"); return; }
+
+    setUploadProgress({ done: 0, total: pending.length });
+
+    let done = 0;
+    for (const item of pending) {
+      setQueue((prev) => prev.map((q) => q.id === item.id ? { ...q, status: "uploading" } : q));
+      try {
+        const body = {
+          title: item.title,
+          alt: item.title,
+          category: activeTab,
+          imageData: item.dataUrl,
+          mimeType: "image/jpeg",
+        };
+        const res = await fetch(`${API}/gallery-images`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d.error || "Upload failed");
+        }
+        setQueue((prev) => prev.map((q) => q.id === item.id ? { ...q, status: "done" } : q));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Error";
+        setQueue((prev) => prev.map((q) => q.id === item.id ? { ...q, status: "error", errorMsg: msg } : q));
+      }
+      done++;
+      setUploadProgress({ done, total: pending.length });
+    }
+
+    const succeeded = queue.filter((q) => q.status === "done").length + done;
+    toast(`Uploaded ${done} of ${pending.length} photo${pending.length !== 1 ? "s" : ""}`);
+    setUploadProgress(null);
+    // Remove successfully uploaded items from queue after a short delay
+    setTimeout(() => {
+      setQueue((prev) => prev.filter((q) => q.status !== "done"));
+    }, 1200);
+    load(activeTab);
+  };
+
+  const clearDone = () => setQueue((prev) => prev.filter((q) => q.status !== "done" && q.status !== "error"));
 
   const onDelete = async (id: string) => {
     if (!confirm("Delete this photo?")) return;
@@ -915,12 +973,15 @@ function GalleryManager({ toast }: { toast: (msg: string) => void }) {
   const imgSrc = (img: GalleryItem) =>
     img.imageData.startsWith("data:") || img.imageData.startsWith("http") ? img.imageData : `data:${img.mimeType};base64,${img.imageData}`;
 
+  const pendingCount = queue.filter((q) => q.status === "pending").length;
+  const catLabel = GALLERY_CATS.find((c) => c.val === activeTab)?.label ?? activeTab;
+
   return (
     <>
       <DemoSectionHeader
         breadcrumb="Dashboard · Gallery Manager"
         title="Gallery Manager"
-        subtitle="Upload and manage photos shown on the school website gallery, student life, faculty, and about sections."
+        subtitle="Upload multiple photos at once — drag & drop or select files, then upload all in one click."
       />
 
       {/* Category Tabs */}
@@ -931,7 +992,7 @@ function GalleryManager({ toast }: { toast: (msg: string) => void }) {
             type="button"
             className={activeTab === cat.val ? "ap-btn-demo-primary" : "ap-filter"}
             style={{ padding: "0.45rem 1rem", fontSize: "0.82rem" }}
-            onClick={() => setActiveTab(cat.val)}
+            onClick={() => { setActiveTab(cat.val); setQueue([]); }}
           >
             {cat.label}
           </button>
@@ -940,48 +1001,126 @@ function GalleryManager({ toast }: { toast: (msg: string) => void }) {
 
       {/* Upload Panel */}
       <div className="ap-panel" style={{ marginBottom: "1.5rem", padding: "1.25rem" }}>
-        <h3 style={{ margin: "0 0 1rem", fontSize: "0.95rem", fontWeight: 600 }}>
-          Add Photo → <span style={{ color: "var(--ap-accent, #4f46e5)", fontWeight: 400 }}>{GALLERY_CATS.find((c) => c.val === activeTab)?.label}</span>
-        </h3>
-        <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "flex-start" }}>
-          {/* Preview box */}
-          <div
-            style={{ width: 140, height: 140, border: "2px dashed #d1d5db", borderRadius: 8, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", background: "#f9fafb", flexShrink: 0, position: "relative", cursor: "pointer" }}
-            onClick={() => document.getElementById("gal-file-input")?.click()}
-          >
-            {previewUrl
-              ? <img src={previewUrl} alt="preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              : <span style={{ color: "#9ca3af", fontSize: "0.8rem", textAlign: "center", padding: "0.5rem" }}>Click to<br />select photo</span>
-            }
-          </div>
-          <input id="gal-file-input" type="file" accept="image/*" style={{ display: "none" }} onChange={onFileChange} />
-
-          {/* Fields */}
-          <div style={{ flex: 1, minWidth: 200, display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            <input
-              className="ap-input"
-              placeholder="Title (optional)"
-              value={form.title}
-              onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-            />
-            <input
-              className="ap-input"
-              placeholder="Alt text / description (optional)"
-              value={form.alt}
-              onChange={(e) => setForm((p) => ({ ...p, alt: e.target.value }))}
-            />
-            {pendingFile && <small style={{ color: "#6b7280" }}>{pendingFile.name} — will be compressed automatically</small>}
-            <button
-              type="button"
-              className="ap-btn-demo-primary"
-              onClick={onUpload}
-              disabled={uploading || !previewUrl}
-              style={{ alignSelf: "flex-start", opacity: uploading || !previewUrl ? 0.6 : 1 }}
-            >
-              {uploading ? "Uploading…" : "Upload Photo"}
-            </button>
-          </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }}>
+          <h3 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 600 }}>
+            Upload to → <span style={{ color: "var(--ap-accent, #4f46e5)", fontWeight: 400 }}>{catLabel}</span>
+          </h3>
+          {queue.length > 0 && (
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button type="button" className="ap-filter" style={{ fontSize: "0.78rem" }} onClick={clearDone}>
+                Clear finished
+              </button>
+              <button
+                type="button"
+                className="ap-btn-demo-primary"
+                style={{ fontSize: "0.82rem", padding: "0.4rem 1rem", opacity: pendingCount === 0 ? 0.5 : 1 }}
+                disabled={pendingCount === 0 || !!uploadProgress}
+                onClick={uploadAll}
+              >
+                {uploadProgress
+                  ? `Uploading ${uploadProgress.done}/${uploadProgress.total}…`
+                  : `Upload All (${pendingCount})`}
+              </button>
+            </div>
+          )}
         </div>
+
+        {/* Progress bar */}
+        {uploadProgress && (
+          <div style={{ marginBottom: "1rem", background: "#f1f5f9", borderRadius: 6, overflow: "hidden", height: 8 }}>
+            <div style={{ height: "100%", background: "var(--ap-accent, #4f46e5)", width: `${Math.round((uploadProgress.done / uploadProgress.total) * 100)}%`, transition: "width 0.3s" }} />
+          </div>
+        )}
+
+        {/* Drop zone */}
+        <div
+          onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+          onDragLeave={() => setIsDragOver(false)}
+          onDrop={onDrop}
+          onClick={() => document.getElementById("gal-bulk-input")?.click()}
+          style={{
+            border: `2px dashed ${isDragOver ? "var(--ap-accent,#4f46e5)" : "#d1d5db"}`,
+            borderRadius: 10,
+            padding: "2rem",
+            textAlign: "center",
+            cursor: "pointer",
+            background: isDragOver ? "rgba(79,70,229,0.04)" : "#fafafa",
+            transition: "all 0.15s",
+            marginBottom: queue.length ? "1.25rem" : 0,
+          }}
+        >
+          <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🖼️</div>
+          <p style={{ margin: 0, fontWeight: 600, fontSize: "0.9rem", color: "#374151" }}>
+            Drag & drop photos here, or click to select
+          </p>
+          <p style={{ margin: "0.3rem 0 0", fontSize: "0.78rem", color: "#9ca3af" }}>
+            Select multiple images at once · auto-compressed before upload
+          </p>
+        </div>
+        <input
+          id="gal-bulk-input"
+          type="file"
+          accept="image/*"
+          multiple
+          style={{ display: "none" }}
+          onChange={onFileInputChange}
+          ref={(el) => { fileInputRef.current = el; }}
+        />
+
+        {/* Queue grid */}
+        {queue.length > 0 && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: "0.85rem" }}>
+            {queue.map((item) => (
+              <div
+                key={item.id}
+                style={{
+                  borderRadius: 8,
+                  overflow: "hidden",
+                  border: `1.5px solid ${item.status === "done" ? "#22c55e" : item.status === "error" ? "#ef4444" : item.status === "uploading" ? "#a5b4fc" : "#e5e7eb"}`,
+                  background: "#fff",
+                  position: "relative",
+                }}
+              >
+                <div style={{ height: 100, background: "#f3f4f6", overflow: "hidden" }}>
+                  <img src={item.dataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", opacity: item.status === "uploading" ? 0.6 : 1, transition: "opacity 0.2s" }} />
+                  {item.status === "uploading" && (
+                    <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 100, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.4)" }}>
+                      <div style={{ width: 28, height: 28, border: "3px solid #e5e7eb", borderTopColor: "#4f46e5", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+                    </div>
+                  )}
+                  {item.status === "done" && (
+                    <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 100, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(34,197,94,0.18)" }}>
+                      <span style={{ fontSize: "1.8rem" }}>✓</span>
+                    </div>
+                  )}
+                  {item.status === "error" && (
+                    <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 100, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "rgba(239,68,68,0.15)", padding: "0.4rem" }}>
+                      <span style={{ fontSize: "1.2rem" }}>⚠️</span>
+                      <span style={{ fontSize: "0.65rem", color: "#dc2626", textAlign: "center", marginTop: 2 }}>{item.errorMsg}</span>
+                    </div>
+                  )}
+                  {item.status === "pending" && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); removeFromQueue(item.id); }}
+                      style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,0.55)", border: "none", color: "#fff", width: 22, height: 22, borderRadius: "50%", fontSize: "0.8rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}
+                    >×</button>
+                  )}
+                </div>
+                <div style={{ padding: "0.4rem" }}>
+                  <input
+                    className="ap-input"
+                    placeholder="Title"
+                    value={item.title}
+                    disabled={item.status !== "pending"}
+                    onChange={(e) => updateQueueTitle(item.id, e.target.value)}
+                    style={{ fontSize: "0.75rem", padding: "0.3rem 0.5rem" }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Existing Images */}
@@ -992,7 +1131,7 @@ function GalleryManager({ toast }: { toast: (msg: string) => void }) {
         {loading ? (
           <p style={{ color: "#9ca3af", textAlign: "center", padding: "2rem" }}>Loading…</p>
         ) : images.length === 0 ? (
-          <p style={{ color: "#9ca3af", textAlign: "center", padding: "2rem" }}>No photos yet in this category. Upload one above.</p>
+          <p style={{ color: "#9ca3af", textAlign: "center", padding: "2rem" }}>No photos yet in this category. Upload some above.</p>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: "1rem" }}>
             {images.map((img) => (
@@ -1004,7 +1143,8 @@ function GalleryManager({ toast }: { toast: (msg: string) => void }) {
                   onClick={() => setLightbox(imgSrc(img))}
                   style={{ width: "100%", height: "100%", objectFit: "cover", cursor: "zoom-in", display: "block" }}
                 />
-                <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0)", transition: "background 0.2s", display: "flex", alignItems: "flex-end" }}
+                <div
+                  style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0)", transition: "background 0.2s", display: "flex", alignItems: "flex-end" }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.35)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0)")}
                 >
@@ -1027,7 +1167,7 @@ function GalleryManager({ toast }: { toast: (msg: string) => void }) {
       {lightbox && (
         <div
           onClick={() => setLightbox(null)}
-          style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.9)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", cursor: "zoom-out" }}
+          style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.92)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", cursor: "zoom-out" }}
         >
           <img src={lightbox} alt="preview" style={{ maxWidth: "90vw", maxHeight: "88vh", objectFit: "contain", borderRadius: 8 }} onClick={(e) => e.stopPropagation()} />
           <button onClick={() => setLightbox(null)} style={{ position: "absolute", top: "1rem", right: "1rem", background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", width: 40, height: 40, borderRadius: "50%", fontSize: "1.4rem", cursor: "pointer" }}>×</button>
