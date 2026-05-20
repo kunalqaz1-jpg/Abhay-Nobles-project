@@ -18,6 +18,7 @@ const SEARCH_INDEX: { title: string; sub: string; nav: TeacherNavKey; keywords: 
   { title: "Timetable", sub: "Weekly schedule", nav: "timetable", keywords: "period time" },
   { title: "Notices", sub: "School announcements", nav: "notices", keywords: "circular news" },
   { title: "Messages", sub: "Inbox & compose", nav: "messages", keywords: "chat parent" },
+  { title: "Events", sub: "School events & activities", nav: "events", keywords: "event activity sports cultural" },
   { title: "Study Material", sub: "Files & links", nav: "study-material", keywords: "pdf notes resource" },
   { title: "Settings", sub: "Preferences", nav: "settings", keywords: "config profile" },
 ];
@@ -33,6 +34,7 @@ const NAV_DEF: { id: TeacherNavKey; label: string; Icon: typeof IconLayout }[] =
   { id: "timetable", label: "Timetable", Icon: IconCalendar },
   { id: "notices", label: "Notices", Icon: IconBell },
   { id: "messages", label: "Messages", Icon: IconMessage },
+  { id: "events", label: "Events", Icon: IconEvent },
   { id: "study-material", label: "Study Material", Icon: IconFolder },
   { id: "settings", label: "Settings", Icon: IconGear },
 ];
@@ -897,6 +899,14 @@ function IconCalendarSmall() {
       <line x1="16" y1="2" x2="16" y2="6" />
       <line x1="8" y1="2" x2="8" y2="6" />
       <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  );
+}
+
+function IconEvent() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
     </svg>
   );
 }
