@@ -105,11 +105,15 @@ async function getStudentDashboard(studentId: string) {
     (r.entries as { studentId: string }[]).some((e) => e.studentId === studentId)
   );
 
-  const [homeworkRecords, noticesRaw, materials, timetable, events, messages] = await Promise.all([
+  const [homeworkRecords, resultsRecords, noticesRaw, materials, timetable, events, messages] = await Promise.all([
     db.select().from(homeworkTable)
       .where(eq(homeworkTable.className, s.className))
       .orderBy(desc(homeworkTable.createdAt))
       .limit(10),
+    db.select().from(resultsTable)
+      .where(eq(resultsTable.className, s.className))
+      .orderBy(desc(resultsTable.createdAt))
+      .limit(20),
     db.select().from(noticesTable)
       .orderBy(desc(noticesTable.createdAt))
       .limit(20),
@@ -158,10 +162,27 @@ async function getStudentDashboard(studentId: string) {
     homework: homeworkRecords.map((h) => ({
       subject: h.subject,
       title: h.title,
+      description: h.description || "",
       dueDate: h.dueDate,
       status: "Pending",
+      fileName: h.fileName || "",
+      teacherName: h.teacherName || "",
     })),
-    result: null,
+    result: (() => {
+      const filteredResults = resultsRecords.filter(
+        (r) => !r.targetRollNo || r.targetRollNo === s.rollNo
+      );
+      if (!filteredResults.length) return null;
+      return filteredResults.map((r) => ({
+        id: r.id,
+        title: r.title,
+        subject: r.subject,
+        examType: r.examType,
+        fileName: r.fileName || "",
+        teacherName: r.teacherName || "",
+        createdAt: fmtDate(r.createdAt),
+      }));
+    })(),
     notices: filteredNotices.map((n) => ({
       title: n.title,
       type: n.audience === "All Classes" ? "General" : "Alert",
@@ -170,6 +191,8 @@ async function getStudentDashboard(studentId: string) {
     materials: materials.map((m) => ({
       title: m.title,
       type: m.resourceType || "File",
+      fileName: m.fileName || "",
+      videoUrl: m.videoUrl || "",
     })),
     timetable: timetable.map((t) => ({
       period: t.period,

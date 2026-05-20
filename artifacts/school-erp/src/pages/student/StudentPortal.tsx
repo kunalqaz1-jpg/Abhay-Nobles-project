@@ -26,6 +26,10 @@ const NAV = [
   { id: "messages", label: "Messages", icon: <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> },
 ];
 
+type HomeworkItem = { subject: string; title: string; description?: string; dueDate: string; status: string; fileName?: string; teacherName?: string };
+type ResultItem = { id: string; title: string; subject: string; examType: string; fileName?: string; teacherName?: string; createdAt: string };
+type MaterialItem = { title: string; type: string; fileName?: string; videoUrl?: string };
+
 type DashboardData = {
   student: {
     studentId: string;
@@ -38,10 +42,10 @@ type DashboardData = {
     fees: { currentTermStatus: string; currentTermNote: string; nextDueAmount: string; nextDueLabel: string; history: { period: string; amount: string; status: string }[] };
   };
   attendance: { classWise: { className: string; weeks: { week: string; present: number; absent: number }[]; calendarDays: { day: number; status: string; offset?: number }[] } } | null;
-  homework: { subject: string; title: string; dueDate: string; status: string }[];
-  result: { subject: string; max: number; obtained: number; grade: string }[] | null;
+  homework: HomeworkItem[];
+  result: ResultItem[] | null;
   notices: { title: string; type: string; date: string }[];
-  materials: { title: string; type: string }[];
+  materials: MaterialItem[];
   timetable: { period: string; time: string; subject: string }[];
   events: { name: string; detail: string; date: string }[];
   messages: { from: string; subject: string; date: string; body: string }[];
@@ -84,16 +88,14 @@ const FALLBACK_DATA: DashboardData = {
     },
   },
   homework: [
-    { subject: "Mathematics", title: "Algebra problem set", dueDate: "12 May", status: "Pending" },
-    { subject: "Science", title: "Ray optics worksheet", dueDate: "14 May", status: "Submitted" },
-    { subject: "English", title: "Essay draft — My Hero", dueDate: "16 May", status: "Pending" },
+    { subject: "Mathematics", title: "Algebra problem set", dueDate: "12 May", status: "Pending", fileName: "algebra-set.pdf", teacherName: "Ms. Neha Sharma" },
+    { subject: "Science", title: "Ray optics worksheet", dueDate: "14 May", status: "Submitted", fileName: "optics-worksheet.pdf", teacherName: "Mr. Ravi Kumar" },
+    { subject: "English", title: "Essay draft — My Hero", dueDate: "16 May", status: "Pending", fileName: "", teacherName: "Ms. Priya Joshi" },
   ],
   result: [
-    { subject: "English", max: 100, obtained: 82, grade: "A" },
-    { subject: "Hindi", max: 100, obtained: 88, grade: "A+" },
-    { subject: "Mathematics", max: 100, obtained: 91, grade: "A+" },
-    { subject: "Science", max: 100, obtained: 86, grade: "A" },
-    { subject: "Social Studies", max: 100, obtained: 79, grade: "A" },
+    { id: "1", title: "Yearly Exam Result 2026", subject: "Mathematics", examType: "yearly", fileName: "yearly-result.pdf", teacherName: "Ms. Neha Sharma", createdAt: "10 May" },
+    { id: "2", title: "Half-Yearly Result 2026", subject: "Science", examType: "half-yearly", fileName: "half-yearly-science.pdf", teacherName: "Mr. Ravi Kumar", createdAt: "2 Mar" },
+    { id: "3", title: "Unit Test 1 Result", subject: "English", examType: "unit-test", fileName: "", teacherName: "Ms. Priya Joshi", createdAt: "15 Jan" },
   ],
   notices: [
     { title: "School closed — Eid-ul-Fitr (regional)", type: "Holiday", date: "4 May" },
@@ -101,9 +103,9 @@ const FALLBACK_DATA: DashboardData = {
     { title: "Parent–Teacher Meet — Sat 28 June, 10 AM", type: "PTM", date: "27 Apr" },
   ],
   materials: [
-    { title: "NCERT Science — Term II (PDF)", type: "Notes" },
-    { title: "Maths — Important questions set", type: "Questions" },
-    { title: "Syllabus — Class X RBSE", type: "Syllabus" },
+    { title: "NCERT Science — Term II (PDF)", type: "Notes", fileName: "ncert-science-t2.pdf", videoUrl: "" },
+    { title: "Maths — Important questions set", type: "Questions", fileName: "maths-iq.pdf", videoUrl: "" },
+    { title: "Syllabus — Class X RBSE", type: "Syllabus", fileName: "", videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
   ],
   timetable: [
     { period: "I", time: "8:00 – 8:45", subject: "English" },
@@ -138,6 +140,42 @@ export default function StudentPortal() {
   const [forgotOpen, setForgotOpen] = useState(false);
   const [welcomeName, setWelcomeName] = useState("Student");
   const hwFileRef = useRef<HTMLInputElement>(null);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [qrSeconds, setQrSeconds] = useState(240);
+  const qrTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  function openQr() {
+    if (qrTimerRef.current) clearInterval(qrTimerRef.current);
+    setQrSeconds(240);
+    setQrOpen(true);
+    qrTimerRef.current = setInterval(() => {
+      setQrSeconds((prev) => {
+        if (prev <= 1) {
+          clearInterval(qrTimerRef.current!);
+          setQrOpen(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }
+
+  function closeQr() {
+    if (qrTimerRef.current) clearInterval(qrTimerRef.current);
+    setQrOpen(false);
+  }
+
+  function fmtQrTimer(sec: number) {
+    const m = Math.floor(sec / 60).toString().padStart(2, "0");
+    const s = (sec % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  }
+
+  function openFile(fileName: string, videoUrl: string) {
+    if (videoUrl) { window.open(videoUrl, "_blank"); return; }
+    if (fileName) { alert(`File: ${fileName}\n\nPlease collect this file from your teacher or check the school WhatsApp group.`); return; }
+    alert("No file attached.");
+  }
 
   useEffect(() => {
     const saved = localStorage.getItem("abhay_student_session");
@@ -377,6 +415,27 @@ export default function StudentPortal() {
         .sp-upload-zone { border: 2px dashed rgba(11,22,40,0.15); border-radius: var(--radius); padding: 1.35rem; text-align: center; margin-top: 0.85rem; background: rgba(255,255,255,0.6); }
         .sp-upload-zone label { cursor: pointer; color: var(--navy-light); font-weight: 600; font-size: 0.875rem; }
         .sp-btn-mini { padding: 0.55rem 1rem; border-radius: 10px; font-weight: 600; font-size: 0.85rem; background: var(--navy); color: var(--white); border: none; cursor: pointer; font-family: inherit; }
+        .sp-file-btn { padding: 0.3rem 0.75rem; border-radius: 8px; font-size: 0.78rem; font-weight: 600; border: none; cursor: pointer; font-family: inherit; transition: opacity 0.2s; }
+        .sp-file-btn.view { background: #e0f2fe; color: #0369a1; }
+        .sp-file-btn.dl { background: #dcfce7; color: #15803d; }
+        .sp-file-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .sp-file-btns { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+        .sp-result-card { background: var(--white); border-radius: var(--radius-sm); border: 1px solid var(--border); padding: 1rem 1.1rem; margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+        .sp-result-meta { flex: 1; min-width: 0; }
+        .sp-result-meta strong { display: block; font-size: 0.9rem; color: var(--navy); margin-bottom: 0.2rem; }
+        .sp-result-meta small { color: var(--slate); font-size: 0.76rem; }
+        .sp-exam-badge { display: inline-block; padding: 0.18rem 0.55rem; border-radius: 6px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; background: #ede9fe; color: #6d28d9; margin-right: 0.4rem; }
+        .sp-qr-modal-overlay { position: fixed; inset: 0; z-index: 300; background: rgba(11,22,40,0.65); display: flex; align-items: center; justify-content: center; padding: 1rem; backdrop-filter: blur(8px); }
+        .sp-qr-modal { background: var(--white); border-radius: calc(var(--radius) + 4px); padding: 2rem 1.75rem 1.75rem; max-width: 360px; width: 100%; text-align: center; box-shadow: 0 24px 80px rgba(0,0,0,0.35); animation: cardIn 0.4s ease; }
+        .sp-qr-modal h3 { font-family: var(--font-display); font-size: 1.4rem; color: var(--navy); margin-bottom: 0.25rem; }
+        .sp-qr-modal p { font-size: 0.82rem; color: var(--slate); margin-bottom: 1rem; }
+        .sp-qr-img { width: 100%; max-width: 240px; border-radius: 10px; border: 2px solid var(--border); margin: 0 auto 0.85rem; display: block; }
+        .sp-qr-upi { font-size: 0.85rem; color: var(--slate); margin-bottom: 0.5rem; }
+        .sp-qr-timer { font-size: 1.65rem; font-weight: 700; font-family: var(--font-display); color: var(--navy); margin-bottom: 1rem; letter-spacing: 0.05em; }
+        .sp-qr-timer.urgent { color: #dc2626; }
+        .sp-qr-close { padding: 0.6rem 1.5rem; border-radius: 999px; font-size: 0.88rem; font-weight: 600; background: var(--navy); color: var(--white); border: none; cursor: pointer; font-family: inherit; }
+        .sp-btn-qr { padding: 0.65rem 1.35rem; border-radius: 10px; font-weight: 600; font-size: 0.88rem; background: linear-gradient(135deg, var(--gold), var(--gold-light)); color: var(--navy); border: none; cursor: pointer; font-family: inherit; margin-top: 0.85rem; display: inline-flex; align-items: center; gap: 0.45rem; box-shadow: 0 4px 16px rgba(201,168,76,0.25); transition: transform 0.2s; }
+        .sp-btn-qr:hover { transform: translateY(-1px); }
         @media (max-width: 900px) {
           .sp-dash { grid-template-columns: 1fr; }
           .sp-sidebar { position: fixed; width: min(288px, 88vw); transform: translateX(-100%); box-shadow: 8px 0 40px rgba(0,0,0,0.25); }
@@ -490,17 +549,31 @@ export default function StudentPortal() {
                 <div className="sp-card">
                   <h3>Assigned work</h3>
                   <table className="sp-table">
-                    <thead><tr><th>Subject</th><th>Task</th><th>Due Date</th><th>Status</th></tr></thead>
+                    <thead><tr><th>Subject</th><th>Task</th><th>Due Date</th><th>Status</th><th>File</th></tr></thead>
                     <tbody>
                       {(dashData?.homework || FALLBACK_DATA.homework).map((h, i) => (
-                        <tr key={i}><td>{h.subject}</td><td>{h.title}</td><td>{h.dueDate}</td><td><span className={`sp-tag ${h.status === "Submitted" ? "ok" : "pending"}`}>{h.status}</span></td></tr>
+                        <tr key={i}>
+                          <td>{h.subject}</td>
+                          <td>
+                            <div style={{ fontWeight: 500 }}>{h.title}</div>
+                            {h.teacherName && <small style={{ color: "var(--slate)", fontSize: "0.72rem" }}>{h.teacherName}</small>}
+                          </td>
+                          <td>{h.dueDate}</td>
+                          <td><span className={`sp-tag ${h.status === "Submitted" ? "ok" : h.status === "Reviewed" ? "ok" : "pending"}`}>{h.status}</span></td>
+                          <td>
+                            <div className="sp-file-btns">
+                              <button type="button" className="sp-file-btn view" onClick={() => openFile(h.fileName || "", "")}>View</button>
+                              <button type="button" className="sp-file-btn dl" onClick={() => openFile(h.fileName || "", "")}>Download</button>
+                            </div>
+                          </td>
+                        </tr>
                       ))}
                     </tbody>
                   </table>
                   <div className="sp-upload-zone">
                     <label htmlFor="hw-upload">📎 Submit assignment — choose file</label>
-                    <input type="file" id="hw-upload" ref={hwFileRef} accept=".pdf,.doc,.docx,image/*" style={{ display: "none" }} onChange={() => alert("Demo: File selected (no upload to server)")} />
-                    <p style={{ marginTop: ".5rem", fontSize: ".75rem", color: "var(--slate)" }}>Accepted: PDF, Word, Images (demo — no upload to server)</p>
+                    <input type="file" id="hw-upload" ref={hwFileRef} accept=".pdf,.doc,.docx,image/*" style={{ display: "none" }} onChange={() => alert("File selected. Contact your teacher to submit.")} />
+                    <p style={{ marginTop: ".5rem", fontSize: ".75rem", color: "var(--slate)" }}>Accepted: PDF, Word, Images</p>
                   </div>
                 </div>
               </div>
@@ -510,17 +583,26 @@ export default function StudentPortal() {
               <div className="sp-panel">
                 <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg><h2>Results / Report Card</h2></div>
                 <div className="sp-card">
-                  <h3>Annual Assessment — Session 2025–26</h3>
-                  <table className="sp-table">
-                    <thead><tr><th>Subject</th><th>Max</th><th>Obtained</th><th>Grade</th></tr></thead>
-                    <tbody>
-                      {(dashData?.result || FALLBACK_DATA.result!).map((r) => (
-                        <tr key={r.subject}><td>{r.subject}</td><td>{r.max}</td><td>{r.obtained}</td><td>{r.grade}</td></tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <p style={{ marginTop: "1rem", fontSize: ".9rem" }}><strong>Overall:</strong> 85.2% — <span className="sp-tag ok">Distinction</span></p>
-                  <button type="button" className="sp-btn-logout" style={{ marginTop: "1rem", padding: ".65rem 1.25rem" }} onClick={() => alert("PDF download is a demo feature.")}>Download Report Card (PDF)</button>
+                  <h3>Uploaded Results — Session 2025–26</h3>
+                  {(dashData?.result || FALLBACK_DATA.result)?.length ? (
+                    (dashData?.result || FALLBACK_DATA.result)!.map((r) => (
+                      <div key={r.id} className="sp-result-card">
+                        <div className="sp-result-meta">
+                          <strong>{r.title}</strong>
+                          <small>
+                            <span className="sp-exam-badge">{r.examType}</span>
+                            {r.subject} · {r.teacherName} · {r.createdAt}
+                          </small>
+                        </div>
+                        <div className="sp-file-btns">
+                          <button type="button" className="sp-file-btn view" onClick={() => openFile(r.fileName || "", "")}>View</button>
+                          <button type="button" className="sp-file-btn dl" onClick={() => openFile(r.fileName || "", "")}>Download</button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p style={{ color: "var(--slate)", fontSize: "0.9rem", padding: "1rem 0" }}>No results uploaded yet. Check back after exams.</p>
+                  )}
                 </div>
               </div>
             )}
@@ -534,7 +616,10 @@ export default function StudentPortal() {
                     <p style={{ marginBottom: ".5rem" }}><span className={`sp-tag ${student.fees.currentTermStatus === "Paid" ? "ok" : "pending"}`}>{student.fees.currentTermStatus}</span></p>
                     <p style={{ fontSize: ".9rem", color: "var(--slate)" }}>{student.fees.currentTermNote}</p>
                     <p style={{ marginTop: ".75rem", fontWeight: 600 }}>Next Due: {student.fees.nextDueAmount} — {student.fees.nextDueLabel}</p>
-                    <button type="button" className="sp-btn-mini" style={{ marginTop: ".85rem" }} onClick={() => alert("Demo: Online payment gateway")}>Pay online (demo)</button>
+                    <button type="button" className="sp-btn-qr" onClick={openQr}>
+                      <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h.01M18 14h.01M14 18h.01M18 18h.01M14 14v4M18 14v4"/></svg>
+                      Pay via QR Code
+                    </button>
                   </div>
                   <div className="sp-card">
                     <h3>Fee history</h3>
@@ -570,10 +655,23 @@ export default function StudentPortal() {
                 <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg><h2>Study Material</h2></div>
                 <div className="sp-card">
                   <table className="sp-table">
-                    <thead><tr><th>Resource</th><th>Type</th><th></th></tr></thead>
+                    <thead><tr><th>Resource</th><th>Type</th><th>Actions</th></tr></thead>
                     <tbody>
                       {(dashData?.materials || FALLBACK_DATA.materials).map((m, i) => (
-                        <tr key={i}><td>{m.title}</td><td>{m.type}</td><td><button type="button" style={{ background: "none", border: "none", color: "var(--navy-light)", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", fontSize: "0.85rem" }} onClick={() => alert(`Demo: opening ${m.title}`)}>View</button></td></tr>
+                        <tr key={i}>
+                          <td style={{ fontWeight: 500 }}>{m.title}</td>
+                          <td><span className="sp-tag pending" style={{ background: "#f0f9ff", color: "#0369a1" }}>{m.type}</span></td>
+                          <td>
+                            <div className="sp-file-btns">
+                              {m.videoUrl ? (
+                                <button type="button" className="sp-file-btn view" onClick={() => window.open(m.videoUrl, "_blank")}>▶ Watch</button>
+                              ) : (
+                                <button type="button" className="sp-file-btn view" onClick={() => openFile(m.fileName || "", m.videoUrl || "")}>View</button>
+                              )}
+                              <button type="button" className="sp-file-btn dl" onClick={() => openFile(m.fileName || "", m.videoUrl || "")}>Download</button>
+                            </div>
+                          </td>
+                        </tr>
                       ))}
                     </tbody>
                   </table>
@@ -595,26 +693,26 @@ export default function StudentPortal() {
             {activePanel === "events" && (
               <div className="sp-panel">
                 <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><h2>Events</h2></div>
-                <div className="sp-card-grid cols-2">
-                  <div className="sp-card">
-                    <h3>Upcoming</h3>
-                    {(dashData?.events || FALLBACK_DATA.events).map((e, i) => (
-                      <div key={i} style={{ marginBottom: ".85rem", fontSize: ".9rem" }}>
-                        <strong>{e.name}</strong><br />
-                        <span style={{ color: "var(--slate)", fontSize: ".82rem" }}>{e.detail} · {e.date}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="sp-card">
-                    <h3>School-wide</h3>
-                    {[["Annual Sports Day", "All students", "Late June"], ["Science Exhibition", "Stall participation", "12 June"], ["Cultural Night", "Performing arts", "15 July"]].map(([n, d, l]) => (
-                      <div key={n} style={{ marginBottom: ".85rem", fontSize: ".9rem" }}>
-                        <strong>{n}</strong><br />
-                        <span style={{ color: "var(--slate)", fontSize: ".82rem" }}>{d} · {l}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                {(() => {
+                  const allEvents = dashData?.events || FALLBACK_DATA.events;
+                  if (!allEvents.length) return (
+                    <div className="sp-card"><p style={{ color: "var(--slate)", fontSize: "0.9rem" }}>No upcoming events. Check back soon.</p></div>
+                  );
+                  return (
+                    <div className="sp-card">
+                      <h3>All Events</h3>
+                      {allEvents.map((e, i) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "0.75rem 0", borderBottom: i < allEvents.length - 1 ? "1px solid var(--border)" : "none", gap: "1rem" }}>
+                          <div>
+                            <strong style={{ fontSize: "0.9rem", color: "var(--navy)", display: "block", marginBottom: "0.2rem" }}>{e.name}</strong>
+                            <span style={{ color: "var(--slate)", fontSize: "0.8rem" }}>{e.detail}</span>
+                          </div>
+                          <span style={{ background: "#fef3c7", color: "#b45309", padding: "0.2rem 0.6rem", borderRadius: 6, fontSize: "0.75rem", fontWeight: 600, flexShrink: 0 }}>{e.date}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -634,6 +732,23 @@ export default function StudentPortal() {
           </div>
         </div>
       </div>
+
+      {/* QR Payment Modal */}
+      {qrOpen && (
+        <div className="sp-qr-modal-overlay" onClick={closeQr}>
+          <div className="sp-qr-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Scan &amp; Pay</h3>
+            <p>Scan the QR code using any UPI app to pay school fees.</p>
+            <img src="/qr-payment.jpeg" alt="Payment QR Code" className="sp-qr-img" />
+            <p className="sp-qr-upi">UPI ID: <strong>71175149523@sbi</strong></p>
+            <div className={`sp-qr-timer${qrSeconds <= 60 ? " urgent" : ""}`}>{fmtQrTimer(qrSeconds)}</div>
+            <p style={{ fontSize: "0.75rem", color: "var(--slate)", marginBottom: "1rem" }}>
+              {qrSeconds <= 60 ? "⚠ QR code expiring soon!" : "QR code valid for 4 minutes"}
+            </p>
+            <button type="button" className="sp-qr-close" onClick={closeQr}>Close</button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
