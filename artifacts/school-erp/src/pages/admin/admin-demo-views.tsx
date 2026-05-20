@@ -808,6 +808,7 @@ function TeachersInteractive({ toast }: { toast: ToastFn }) {
 // ─── GALLERY MANAGER ─────────────────────────────────────────────────────────
 
 const GALLERY_CATS = [
+  { label: "All Photos", val: "__all__" },
   { label: "Gallery – Campus", val: "gallery-campus" },
   { label: "Gallery – Events", val: "gallery-events" },
   { label: "Gallery – Sports", val: "gallery-sports" },
@@ -869,7 +870,8 @@ function GalleryManager({ toast }: { toast: (msg: string) => void }) {
 
   const load = (cat: string) => {
     setLoading(true);
-    fetch(`${API}/gallery-images?category=${encodeURIComponent(cat)}`)
+    const url = cat === "__all__" ? `${API}/gallery-images` : `${API}/gallery-images?category=${encodeURIComponent(cat)}`;
+    fetch(url)
       .then((r) => r.json())
       .then((data: GalleryItem[]) => setImages(data))
       .catch(() => setImages([]))
@@ -999,8 +1001,15 @@ function GalleryManager({ toast }: { toast: (msg: string) => void }) {
         ))}
       </div>
 
-      {/* Upload Panel */}
-      <div className="ap-panel" style={{ marginBottom: "1.5rem", padding: "1.25rem" }}>
+      {/* Upload Panel — hidden when viewing All Photos */}
+      {activeTab === "__all__" && (
+        <div className="ap-panel" style={{ marginBottom: "1.5rem", padding: "1rem 1.25rem", background: "#f8fafc", border: "1px dashed #cbd5e1" }}>
+          <p style={{ margin: 0, color: "#64748b", fontSize: "0.88rem" }}>
+            Select a specific category tab above to upload new photos.
+          </p>
+        </div>
+      )}
+      <div className="ap-panel" style={{ marginBottom: "1.5rem", padding: "1.25rem", display: activeTab === "__all__" ? "none" : undefined }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }}>
           <h3 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 600 }}>
             Upload to → <span style={{ color: "var(--ap-accent, #4f46e5)", fontWeight: 400 }}>{catLabel}</span>
@@ -1136,6 +1145,11 @@ function GalleryManager({ toast }: { toast: (msg: string) => void }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: "1rem" }}>
             {images.map((img) => (
               <div key={img._id} style={{ position: "relative", borderRadius: 8, overflow: "hidden", aspectRatio: "1", background: "#f3f4f6" }}>
+                {activeTab === "__all__" && (
+                  <div style={{ position: "absolute", top: 4, left: 4, zIndex: 2, background: "rgba(0,0,0,0.6)", color: "#fff", fontSize: "0.6rem", fontWeight: 600, padding: "2px 6px", borderRadius: 4, maxWidth: "80%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {GALLERY_CATS.find(c => c.val === img.category)?.label ?? img.category}
+                  </div>
+                )}
                 <img
                   src={imgSrc(img)}
                   alt={img.alt || img.title}

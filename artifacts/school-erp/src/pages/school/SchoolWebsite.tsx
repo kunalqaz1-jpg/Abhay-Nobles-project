@@ -36,6 +36,7 @@ export default function SchoolWebsite() {
   const [activeTab, setActiveTab] = useState("Pre-Primary");
   const [galleryFilter, setGalleryFilter] = useState("all");
   const [galleryItems, setGalleryItems] = useState<{ src: string; alt: string; cat: string }[]>(STATIC_GALLERY);
+  const [aboutPhotoSrc, setAboutPhotoSrc] = useState("/school-logo.jpg");
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
   const [admitSubmitted, setAdmitSubmitted] = useState(false);
   const [contactSubmitted, setContactSubmitted] = useState(false);
@@ -135,6 +136,18 @@ export default function SchoolWebsite() {
             alt: img.alt || img.title,
             cat: CAT_MAP[img.category] ?? img.category,
           })));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/gallery-images?category=about`)
+      .then((r) => r.json())
+      .then((data: { imageData: string; mimeType: string }[]) => {
+        if (data && data.length > 0) {
+          const img = data[0];
+          setAboutPhotoSrc(galleryImgSrc(img.imageData));
         }
       })
       .catch(() => {});
@@ -741,7 +754,7 @@ export default function SchoolWebsite() {
               <div className="about-img-wrap reveal">
                 <div className="about-accent-bar" />
                 <div className="about-main-img">
-                  <img src="/school-logo.jpg" alt="Shri Abhay Nobles School" />
+                  <img src={aboutPhotoSrc} alt="Shri Abhay Nobles School" />
                 </div>
                 <div className="about-float-card">
                   <div className="about-float-icon">🏆</div>
