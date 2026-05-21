@@ -50,6 +50,11 @@ export default function SchoolWebsite() {
   const [contactForm, setContactForm] = useState({ fullName: "", phone: "", email: "", subject: "", message: "" });
   const [contactLoading, setContactLoading] = useState(false);
 
+  const [prospectusModal, setProspectusModal] = useState(false);
+  const [prospectusForm, setProspectusForm] = useState({ name: "", phone: "", classApplied: "", email: "" });
+  const [prospectusLoading, setProspectusLoading] = useState(false);
+  const [prospectusErrors, setProspectusErrors] = useState<{ name?: string; phone?: string; classApplied?: string }>({});
+
   useEffect(() => {
     const onScroll = () => {
       const sy = window.scrollY;
@@ -118,6 +123,32 @@ export default function SchoolWebsite() {
     } finally {
       setContactLoading(false);
     }
+  }
+
+  async function handleProspectusSubmit() {
+    const errors: { name?: string; phone?: string; classApplied?: string } = {};
+    if (!prospectusForm.name.trim()) errors.name = "Name is required";
+    if (!prospectusForm.phone.trim()) errors.phone = "Phone number is required";
+    if (!prospectusForm.classApplied) errors.classApplied = "Please select a class";
+    if (Object.keys(errors).length > 0) { setProspectusErrors(errors); return; }
+    setProspectusErrors({});
+    setProspectusLoading(true);
+    try {
+      await apiRequest("/admissions", {
+        method: "POST",
+        body: JSON.stringify({ studentName: prospectusForm.name, parentName: prospectusForm.name, phone: prospectusForm.phone, email: prospectusForm.email, classApplied: prospectusForm.classApplied, message: "Prospectus download request" }),
+      });
+    } catch { /* save best-effort */ } finally {
+      setProspectusLoading(false);
+    }
+    const link = document.createElement("a");
+    link.href = "/prospectus.pdf";
+    link.download = "Shri_Abhay_Nobles_School_Prospectus.pdf";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setProspectusModal(false);
+    setProspectusForm({ name: "", phone: "", classApplied: "", email: "" });
   }
 
   const closeMenu = () => setMenuOpen(false);
@@ -888,7 +919,7 @@ export default function SchoolWebsite() {
                     </div>
                   ))}
                 </div>
-                <a href="#" className="btn btn-outline-dark" style={{ marginTop: "2rem" }}>Download Prospectus →</a>
+                <button type="button" onClick={() => setProspectusModal(true)} className="btn btn-outline-dark" style={{ marginTop: "2rem" }}>Download Prospectus →</button>
               </div>
               <div className="academics-visual reveal-right">
                 <div className="acad-result-title">Academic Excellence</div>
@@ -973,7 +1004,7 @@ export default function SchoolWebsite() {
                   ))}
                 </div>
                 <div style={{ display: "flex", gap: "1rem", marginTop: "2rem", flexWrap: "wrap" }}>
-                  <a href="#" className="btn btn-gold">Download Prospectus</a>
+                  <button type="button" onClick={() => setProspectusModal(true)} className="btn btn-gold">Download Prospectus</button>
                   <a href="#" className="btn btn-outline">View Fee Structure</a>
                 </div>
               </div>
@@ -1437,7 +1468,7 @@ export default function SchoolWebsite() {
                     <Link href="/teacher/login">Teacher Portal</Link>
                     <Link href="/admin">Admin Login</Link>
                     <a href="#">Online Fee Payment</a>
-                    <a href="#">Download Prospectus</a>
+                    <button type="button" onClick={() => setProspectusModal(true)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: "inherit", font: "inherit", textAlign: "left" }}>Download Prospectus</button>
                     <a href="#">Results / Reports</a>
                   </div>
                 </div>
@@ -1488,6 +1519,55 @@ export default function SchoolWebsite() {
         >
           ↑
         </button>
+
+        {/* ── PROSPECTUS MODAL ── */}
+        {prospectusModal && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(11,22,40,0.75)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }} onClick={() => setProspectusModal(false)}>
+            <div style={{ background: "#fff", borderRadius: "20px", padding: "2.5rem", width: "100%", maxWidth: "480px", position: "relative", boxShadow: "0 24px 80px rgba(11,22,40,0.3)" }} onClick={(e) => e.stopPropagation()}>
+              <button type="button" onClick={() => setProspectusModal(false)} style={{ position: "absolute", top: "1rem", right: "1rem", background: "none", border: "none", fontSize: "1.5rem", cursor: "pointer", color: "#64748b", lineHeight: 1 }} aria-label="Close">×</button>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
+                <div style={{ width: 42, height: 42, background: "linear-gradient(135deg,#c9a84c,#e8c96a)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.2rem" }}>📄</div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "1.3rem", color: "#0b1628", fontWeight: 700 }}>Download Prospectus</h3>
+                  <p style={{ margin: 0, fontSize: "0.82rem", color: "#64748b" }}>Please fill in your details to download</p>
+                </div>
+              </div>
+              <div style={{ width: 40, height: 3, background: "linear-gradient(90deg,#c9a84c,#e8c96a)", borderRadius: 2, margin: "1rem 0 1.5rem" }} />
+              <div style={{ display: "grid", gap: "1rem" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "#475569", marginBottom: "0.35rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Full Name <span style={{ color: "#e53e3e" }}>*</span></label>
+                  <input type="text" placeholder="Enter your full name" value={prospectusForm.name} onChange={(e) => setProspectusForm((f) => ({ ...f, name: e.target.value }))} style={{ width: "100%", padding: "0.7rem 1rem", border: `1.5px solid ${prospectusErrors.name ? "#e53e3e" : "#e2e8f0"}`, borderRadius: "10px", fontSize: "0.95rem", outline: "none", boxSizing: "border-box", background: "#f8fafc", color: "#0b1628" }} />
+                  {prospectusErrors.name && <p style={{ margin: "0.25rem 0 0", fontSize: "0.78rem", color: "#e53e3e" }}>{prospectusErrors.name}</p>}
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "#475569", marginBottom: "0.35rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Phone Number <span style={{ color: "#e53e3e" }}>*</span></label>
+                  <input type="tel" placeholder="+91 00000 00000" value={prospectusForm.phone} onChange={(e) => setProspectusForm((f) => ({ ...f, phone: e.target.value }))} style={{ width: "100%", padding: "0.7rem 1rem", border: `1.5px solid ${prospectusErrors.phone ? "#e53e3e" : "#e2e8f0"}`, borderRadius: "10px", fontSize: "0.95rem", outline: "none", boxSizing: "border-box", background: "#f8fafc", color: "#0b1628" }} />
+                  {prospectusErrors.phone && <p style={{ margin: "0.25rem 0 0", fontSize: "0.78rem", color: "#e53e3e" }}>{prospectusErrors.phone}</p>}
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "#475569", marginBottom: "0.35rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Class Seeking <span style={{ color: "#e53e3e" }}>*</span></label>
+                  <select value={prospectusForm.classApplied} onChange={(e) => setProspectusForm((f) => ({ ...f, classApplied: e.target.value }))} style={{ width: "100%", padding: "0.7rem 1rem", border: `1.5px solid ${prospectusErrors.classApplied ? "#e53e3e" : "#e2e8f0"}`, borderRadius: "10px", fontSize: "0.95rem", outline: "none", boxSizing: "border-box", background: "#f8fafc", color: prospectusForm.classApplied ? "#0b1628" : "#94a3b8", appearance: "auto" }}>
+                    <option value="">Select Class</option>
+                    <option>Nursery / KG</option>
+                    <option>Class 1–5</option>
+                    <option>Class 6–8</option>
+                    <option>Class 9–10</option>
+                    <option>Class 11–12</option>
+                  </select>
+                  {prospectusErrors.classApplied && <p style={{ margin: "0.25rem 0 0", fontSize: "0.78rem", color: "#e53e3e" }}>{prospectusErrors.classApplied}</p>}
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "#475569", marginBottom: "0.35rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Email Address <span style={{ color: "#94a3b8", fontWeight: 400 }}>(optional)</span></label>
+                  <input type="email" placeholder="your@email.com" value={prospectusForm.email} onChange={(e) => setProspectusForm((f) => ({ ...f, email: e.target.value }))} style={{ width: "100%", padding: "0.7rem 1rem", border: "1.5px solid #e2e8f0", borderRadius: "10px", fontSize: "0.95rem", outline: "none", boxSizing: "border-box", background: "#f8fafc", color: "#0b1628" }} />
+                </div>
+                <button type="button" onClick={handleProspectusSubmit} disabled={prospectusLoading} style={{ width: "100%", padding: "0.9rem", background: "linear-gradient(135deg,#c9a84c,#e8c96a)", border: "none", borderRadius: "10px", fontSize: "1rem", fontWeight: 700, color: "#0b1628", cursor: prospectusLoading ? "wait" : "pointer", marginTop: "0.25rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+                  {prospectusLoading ? "Saving…" : "📥 Download Prospectus"}
+                </button>
+                <p style={{ margin: 0, fontSize: "0.75rem", color: "#94a3b8", textAlign: "center" }}>🔒 Your details are safe and will only be used for admission purposes</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── GALLERY LIGHTBOX ── */}
         {lightbox && (
