@@ -49,7 +49,7 @@ args = "PORT=23757 BASE_PATH=/ pnpm --filter @workspace/school-erp run dev"
 waitForPort = 23757
 
 [agent]
-stack = "PNPM_WORKSPACE"
+stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
 
 [postMerge]
