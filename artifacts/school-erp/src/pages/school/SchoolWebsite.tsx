@@ -37,6 +37,8 @@ export default function SchoolWebsite() {
   const [galleryFilter, setGalleryFilter] = useState("all");
   const [galleryItems, setGalleryItems] = useState<{ src: string; alt: string; cat: string }[]>(STATIC_GALLERY);
   const [aboutPhotoSrc, setAboutPhotoSrc] = useState("/school-logo.jpg");
+  const [facilityImgs, setFacilityImgs] = useState<string[]>([]);
+  const [studentLifeImgs, setStudentLifeImgs] = useState<string[]>([]);
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
   const [admitSubmitted, setAdmitSubmitted] = useState(false);
   const [contactSubmitted, setContactSubmitted] = useState(false);
@@ -144,11 +146,26 @@ export default function SchoolWebsite() {
   useEffect(() => {
     fetch(`${API_BASE_URL}/gallery-images?category=about`)
       .then((r) => r.json())
-      .then((data: { imageData: string; mimeType: string }[]) => {
-        if (data && data.length > 0) {
-          const img = data[0];
-          setAboutPhotoSrc(galleryImgSrc(img.imageData));
-        }
+      .then((data: { imageData: string }[]) => {
+        if (data && data.length > 0) setAboutPhotoSrc(galleryImgSrc(data[0].imageData));
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/gallery-images?category=campus-facilities`)
+      .then((r) => r.json())
+      .then((data: { imageData: string }[]) => {
+        if (data && data.length > 0) setFacilityImgs(data.map((d) => galleryImgSrc(d.imageData)));
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/gallery-images?category=student-life`)
+      .then((r) => r.json())
+      .then((data: { imageData: string }[]) => {
+        if (data && data.length > 0) setStudentLifeImgs(data.map((d) => galleryImgSrc(d.imageData)));
       })
       .catch(() => {});
   }, []);
@@ -1023,10 +1040,10 @@ export default function SchoolWebsite() {
                 { img: "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&w=900&q=80", alt: "School library with books and reading space", title: "Digital Library", desc: "10,000+ books, e-library access, reading rooms, and research resources for all age groups.", delay: "reveal-delay-4" },
                 { img: "https://images.unsplash.com/photo-1526232761682-d26e03ac148e?auto=format&fit=crop&w=900&q=80", alt: "Students practicing sports on school ground", title: "Sports Complex", desc: "Cricket, football, basketball, volleyball courts, athletics track, and indoor sports facilities.", delay: "reveal-delay-1" },
                 { img: "https://images.unsplash.com/photo-1484154218962-a197022b5858?auto=format&fit=crop&w=900&q=80", alt: "Comfortable and safe hostel room", title: "Hostel Facility", desc: "Separate boys & girls hostels with CCTV, healthy meals, study hours, and 24/7 warden supervision.", delay: "reveal-delay-2" },
-              ].map((f) => (
+              ].map((f, i) => (
                 <div key={f.title} className={`facility-card reveal ${f.delay}`}>
                   <div className="facility-img">
-                    <img src={f.img} alt={f.alt} loading="lazy" />
+                    <img src={facilityImgs[i] ?? f.img} alt={f.alt} loading="lazy" />
                   </div>
                   <div className="facility-body">
                     <div className="facility-title">{f.title}</div>
@@ -1105,10 +1122,10 @@ export default function SchoolWebsite() {
                 { cls: "life-card-3", img: "https://images.unsplash.com/photo-1532187643603-ba119ca4109e?auto=format&fit=crop&w=900&q=80", alt: "Student science innovation activity", title: "Science & Innovation", sub: "Robotics · Olympiads · STEM Projects", delay: "reveal-delay-1" },
                 { cls: "life-card-4", img: "https://images.unsplash.com/photo-1511379938547-c1f69419868d?auto=format&fit=crop&w=900&q=80", alt: "Music and arts practice by students", title: "Arts & Music", sub: "Painting · Classical Dance · Vocal Music", delay: "reveal-delay-2" },
                 { cls: "life-card-6", img: "https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?auto=format&fit=crop&w=900&q=80", alt: "Students participating in eco club activity", title: "Eco & Social Clubs", sub: "Green Campus · Community Service", delay: "reveal-delay-3" },
-              ].map((lc) => (
+              ].map((lc, i) => (
                 <div key={lc.title} className={`life-card ${lc.cls} reveal ${lc.delay}`}>
                   <div className="life-card-img">
-                    <img src={lc.img} alt={lc.alt} loading="lazy" />
+                    <img src={studentLifeImgs[i] ?? lc.img} alt={lc.alt} loading="lazy" />
                   </div>
                   <div className="life-card-overlay">
                     <div className="life-card-title">{lc.title}</div>

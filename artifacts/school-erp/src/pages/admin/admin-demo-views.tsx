@@ -813,6 +813,7 @@ const GALLERY_CATS = [
   { label: "Gallery – Events", val: "gallery-events" },
   { label: "Gallery – Sports", val: "gallery-sports" },
   { label: "Gallery – Art & Culture", val: "gallery-cultural" },
+  { label: "Campus Facilities", val: "campus-facilities" },
   { label: "Student Life", val: "student-life" },
   { label: "Faculty Photos", val: "faculty" },
   { label: "About Photo", val: "about" },
