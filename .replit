@@ -70,3 +70,8 @@ externalPort = 8081
 [[ports]]
 localPort = 23757
 externalPort = 3000
+
+[userenv]
+
+[userenv.shared]
+SMTP_USER = "kunalqaz1@gmail.com"

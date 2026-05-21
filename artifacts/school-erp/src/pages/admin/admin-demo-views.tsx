@@ -53,6 +53,7 @@ export type NavKey =
   | "notices"
   | "documents"
   | "analytics"
+  | "enquiries"
   | "gallery"
   | "settings";
 
@@ -1777,6 +1778,9 @@ export function AdminDemoView({ nav, toast }: { nav: NavKey; toast: ToastFn }) {
         </>
       );
 
+    case "enquiries":
+      return <EnquiriesView toast={toast} />;
+
     case "gallery":
       return <GalleryManager toast={toast} />;
 
@@ -1786,4 +1790,209 @@ export function AdminDemoView({ nav, toast }: { nav: NavKey; toast: ToastFn }) {
     default:
       return null;
   }
+}
+
+// ─── ENQUIRIES VIEW ───────────────────────────────────────────────────────────
+
+type AdmissionRow = {
+  id: string;
+  studentName: string;
+  parentName: string;
+  phone: string;
+  email: string;
+  classApplied: string;
+  message: string;
+  status: string;
+  createdAt: string;
+};
+
+type ContactRow = {
+  id: string;
+  fullName: string;
+  phone: string;
+  email: string;
+  subject: string;
+  message: string;
+  createdAt: string;
+};
+
+function EnquiriesView({ toast }: { toast: ToastFn }) {
+  const [tab, setTab] = useState<"admissions" | "contacts">("admissions");
+  const [admissions, setAdmissions] = useState<AdmissionRow[]>([]);
+  const [contacts, setContacts] = useState<ContactRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [expandId, setExpandId] = useState<string | null>(null);
+
+  const token = (() => { try { return sessionStorage.getItem("abhay_admin_token") ?? ""; } catch { return ""; } })();
+  const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      fetch("/api/admissions", { headers: authHeader }).then((r) => r.json()),
+      fetch("/api/contacts", { headers: authHeader }).then((r) => r.json()),
+    ])
+      .then(([adm, con]) => {
+        setAdmissions(Array.isArray(adm) ? adm : []);
+        setContacts(Array.isArray(con) ? con : []);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function updateStatus(id: string, status: string) {
+    setUpdatingId(id);
+    try {
+      const res = await fetch(`/api/admissions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ status }),
+      });
+      if (res.ok) {
+        setAdmissions((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
+        toast(`Status updated to "${status}"`);
+      }
+    } catch {
+      toast("Failed to update status");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  function fmtDate(iso: string) {
+    try {
+      return new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    } catch { return iso; }
+  }
+
+  const statusColor: Record<string, { bg: string; color: string }> = {
+    pending:   { bg: "#ffedd5", color: "#c2410c" },
+    contacted: { bg: "#dbeafe", color: "#1d4ed8" },
+    admitted:  { bg: "#dcfce7", color: "#15803d" },
+    rejected:  { bg: "#fee2e2", color: "#dc2626" },
+  };
+
+  return (
+    <>
+      <DemoSectionHeader
+        breadcrumb="Dashboard · Enquiries"
+        title="Enquiries"
+        subtitle="Admission enquiries and contact messages submitted from the school website."
+      />
+
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.25rem" }}>
+        <button
+          type="button"
+          className={tab === "admissions" ? "ap-btn-demo-primary" : "ap-btn-demo-secondary"}
+          onClick={() => setTab("admissions")}
+        >
+          Admission Enquiries ({admissions.length})
+        </button>
+        <button
+          type="button"
+          className={tab === "contacts" ? "ap-btn-demo-primary" : "ap-btn-demo-secondary"}
+          onClick={() => setTab("contacts")}
+        >
+          Contact Messages ({contacts.length})
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: "2rem", textAlign: "center", color: "var(--ap-muted)" }}>Loading enquiries…</div>
+      ) : tab === "admissions" ? (
+        admissions.length === 0 ? (
+          <div className="ap-panel" style={{ padding: "2rem", textAlign: "center", color: "var(--ap-muted)" }}>
+            No admission enquiries yet. They will appear here when parents submit the form on the website.
+          </div>
+        ) : (
+          <div className="ap-panel ap-table-panel">
+            <table className="ap-data-table">
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Parent / Phone</th>
+                  <th>Class</th>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {admissions.map((a) => {
+                  const sc = statusColor[a.status] ?? { bg: "#f1f5f9", color: "#64748b" };
+                  return (
+                    <>
+                      <tr key={a.id} style={{ cursor: "pointer" }} onClick={() => setExpandId(expandId === a.id ? null : a.id)}>
+                        <td><strong style={{ fontSize: "0.8125rem" }}>{a.studentName}</strong></td>
+                        <td>
+                          <span style={{ display: "block", fontSize: "0.8125rem" }}>{a.parentName || "—"}</span>
+                          <span style={{ fontSize: "0.75rem", color: "var(--ap-muted)" }}>{a.phone}</span>
+                        </td>
+                        <td style={{ fontSize: "0.8125rem" }}>{a.classApplied || "—"}</td>
+                        <td style={{ fontSize: "0.75rem", color: "var(--ap-muted)", whiteSpace: "nowrap" }}>{fmtDate(a.createdAt)}</td>
+                        <td>
+                          <span className="ap-pill" style={{ background: sc.bg, color: sc.color }}>
+                            {a.status}
+                          </span>
+                        </td>
+                        <td>
+                          <select
+                            className="ap-filter"
+                            style={{ fontSize: "0.75rem", padding: "0.3rem 0.5rem" }}
+                            value={a.status}
+                            disabled={updatingId === a.id}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => updateStatus(a.id, e.target.value)}
+                          >
+                            <option value="pending">Pending</option>
+                            <option value="contacted">Contacted</option>
+                            <option value="admitted">Admitted</option>
+                            <option value="rejected">Rejected</option>
+                          </select>
+                        </td>
+                      </tr>
+                      {expandId === a.id && (
+                        <tr key={`${a.id}-exp`}>
+                          <td colSpan={6} style={{ background: "#f8fafc", padding: "0.75rem 1rem", fontSize: "0.8125rem", color: "var(--ap-muted)" }}>
+                            <strong style={{ color: "var(--ap-text)" }}>Email:</strong> {a.email || "—"} &nbsp;·&nbsp;
+                            <strong style={{ color: "var(--ap-text)" }}>Message:</strong> {a.message || "—"}
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      ) : (
+        contacts.length === 0 ? (
+          <div className="ap-panel" style={{ padding: "2rem", textAlign: "center", color: "var(--ap-muted)" }}>
+            No contact messages yet.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: "0.75rem" }}>
+            {contacts.map((c) => (
+              <div key={c.id} className="ap-panel" style={{ padding: "1rem 1.25rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                  <div>
+                    <strong style={{ fontSize: "0.875rem" }}>{c.fullName}</strong>
+                    {c.subject && <span style={{ marginLeft: "0.75rem", fontSize: "0.75rem", color: "var(--ap-muted)" }}>Re: {c.subject}</span>}
+                  </div>
+                  <span style={{ fontSize: "0.72rem", color: "var(--ap-muted)" }}>{fmtDate(c.createdAt)}</span>
+                </div>
+                <div style={{ fontSize: "0.8125rem", color: "var(--ap-text)", marginBottom: "0.5rem", lineHeight: 1.6 }}>{c.message}</div>
+                <div style={{ fontSize: "0.75rem", color: "var(--ap-muted)" }}>
+                  {c.phone && <span>📞 {c.phone} &nbsp;·&nbsp;</span>}
+                  {c.email && <span>✉️ {c.email}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </>
+  );
 }

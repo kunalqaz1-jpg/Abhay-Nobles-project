@@ -1,4 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
+import nodemailer from "nodemailer";
 
 declare module "express-serve-static-core" {
   interface Request { session?: SessionInfo; }
@@ -27,6 +28,77 @@ import bcryptjs from "bcryptjs";
 import { randomUUID } from "crypto";
 
 const router = Router();
+
+// ─── EMAIL MAILER ─────────────────────────────────────────────────────────────
+
+function createMailer() {
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  if (!user || !pass) return null;
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: { user, pass },
+  });
+}
+
+async function sendEnquiryEmail(data: {
+  type: "admission" | "contact";
+  studentName?: string;
+  parentName?: string;
+  fullName?: string;
+  phone: string;
+  email: string;
+  classApplied?: string;
+  subject?: string;
+  message?: string;
+}) {
+  const mailer = createMailer();
+  if (!mailer) return;
+  const to = process.env.SMTP_USER!;
+  const isAdmission = data.type === "admission";
+
+  const htmlBody = isAdmission
+    ? `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+        <div style="background:#0f172a;padding:20px 24px">
+          <h2 style="color:#c9a84c;margin:0;font-size:18px">🎓 New Admission Enquiry</h2>
+          <p style="color:#94a3b8;margin:4px 0 0;font-size:13px">Shri Abhay Nobles Senior Secondary School</p>
+        </div>
+        <div style="padding:24px">
+          <table style="width:100%;border-collapse:collapse;font-size:14px">
+            <tr><td style="padding:8px 0;color:#64748b;width:140px">Student Name</td><td style="font-weight:600">${data.studentName || "—"}</td></tr>
+            <tr><td style="padding:8px 0;color:#64748b">Parent Name</td><td style="font-weight:600">${data.parentName || "—"}</td></tr>
+            <tr><td style="padding:8px 0;color:#64748b">Mobile</td><td style="font-weight:600">${data.phone}</td></tr>
+            <tr><td style="padding:8px 0;color:#64748b">Email</td><td style="font-weight:600">${data.email || "—"}</td></tr>
+            <tr><td style="padding:8px 0;color:#64748b">Class Sought</td><td style="font-weight:600">${data.classApplied || "—"}</td></tr>
+          </table>
+          <p style="margin:16px 0 0;font-size:13px;color:#64748b">Please follow up within 24 hours.</p>
+        </div>
+      </div>`
+    : `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+        <div style="background:#0f172a;padding:20px 24px">
+          <h2 style="color:#c9a84c;margin:0;font-size:18px">📬 New Contact Message</h2>
+          <p style="color:#94a3b8;margin:4px 0 0;font-size:13px">Shri Abhay Nobles Senior Secondary School</p>
+        </div>
+        <div style="padding:24px">
+          <table style="width:100%;border-collapse:collapse;font-size:14px">
+            <tr><td style="padding:8px 0;color:#64748b;width:140px">Name</td><td style="font-weight:600">${data.fullName || "—"}</td></tr>
+            <tr><td style="padding:8px 0;color:#64748b">Mobile</td><td style="font-weight:600">${data.phone || "—"}</td></tr>
+            <tr><td style="padding:8px 0;color:#64748b">Email</td><td style="font-weight:600">${data.email || "—"}</td></tr>
+            <tr><td style="padding:8px 0;color:#64748b">Subject</td><td style="font-weight:600">${data.subject || "—"}</td></tr>
+          </table>
+          <div style="margin-top:16px;background:#f8fafc;border-radius:8px;padding:12px;font-size:14px;color:#0f172a">${data.message || ""}</div>
+        </div>
+      </div>`;
+
+  await mailer.sendMail({
+    from: `"Shri Abhay Nobles ERP" <${to}>`,
+    to,
+    subject: isAdmission
+      ? `New Admission Enquiry — ${data.studentName || data.parentName} (${data.classApplied || "Class?"})`
+      : `Contact Message — ${data.fullName} (${data.subject || "General"})`,
+    html: htmlBody,
+  });
+}
 
 // ─── AUTH SESSIONS (in-memory token store) ──────────────────────────────────
 
@@ -557,6 +629,7 @@ router.post("/events", requireAuth(["teacher", "admin"]), async (req, res) => {
   return res.json({ id: inserted.eventId, className: inserted.className, title: inserted.title, description: inserted.description, eventDate: inserted.eventDate, teacherName: inserted.teacherName, createdAt: inserted.createdAt });
 });
 
+
 // ─── ADMISSIONS ──────────────────────────────────────────────────────────────
 
 router.post("/admissions", async (req, res) => {
@@ -564,8 +637,48 @@ router.post("/admissions", async (req, res) => {
   if (!studentName || !phone) {
     return res.status(400).json({ error: "studentName and phone required" });
   }
-  const inserted = await Admission.create({ studentName, parentName: parentName ?? "", phone, email: email ?? "", classApplied: classApplied ?? "", message: message ?? "" });
-  return res.json({ id: inserted._id, studentName: inserted.studentName, parentName: inserted.parentName, phone: inserted.phone, email: inserted.email, classApplied: inserted.classApplied, message: inserted.message, status: inserted.status, createdAt: inserted.createdAt.toISOString() });
+  const doc = await Admission.create({
+    studentName,
+    parentName: parentName ?? "",
+    phone,
+    email: email ?? "",
+    classApplied: classApplied ?? "",
+    message: message ?? "",
+    status: "pending",
+  });
+  sendEnquiryEmail({ type: "admission", studentName, parentName, phone, email, classApplied, message }).catch(() => {});
+  return res.status(201).json({
+    id: doc._id,
+    studentName: doc.studentName,
+    parentName: doc.parentName,
+    phone: doc.phone,
+    email: doc.email,
+    classApplied: doc.classApplied,
+    status: doc.status,
+    createdAt: doc.createdAt.toISOString(),
+  });
+});
+
+router.get("/admissions", requireAuth(["admin"]), async (_req, res) => {
+  const rows = await Admission.find().sort({ createdAt: -1 });
+  return res.json(rows.map((a) => ({
+    id: a._id,
+    studentName: a.studentName,
+    parentName: a.parentName,
+    phone: a.phone,
+    email: a.email,
+    classApplied: a.classApplied,
+    message: a.message,
+    status: a.status,
+    createdAt: a.createdAt.toISOString(),
+  })));
+});
+
+router.patch("/admissions/:id", requireAuth(["admin"]), async (req, res) => {
+  const { status } = req.body;
+  const doc = await Admission.findByIdAndUpdate(req.params.id, { status }, { new: true });
+  if (!doc) return res.status(404).json({ error: "Not found" });
+  return res.json({ id: doc._id, status: doc.status });
 });
 
 // ─── CONTACTS ────────────────────────────────────────────────────────────────
@@ -575,8 +688,30 @@ router.post("/contacts", async (req, res) => {
   if (!fullName || !message) {
     return res.status(400).json({ error: "fullName and message required" });
   }
-  const inserted = await Contact.create({ fullName, phone: phone ?? "", email: email ?? "", subject: subject ?? "", message });
-  return res.json({ id: inserted._id, fullName: inserted.fullName, phone: inserted.phone, email: inserted.email, subject: inserted.subject, message: inserted.message, createdAt: inserted.createdAt.toISOString() });
+  const doc = await Contact.create({ fullName, phone: phone ?? "", email: email ?? "", subject: subject ?? "", message });
+  sendEnquiryEmail({ type: "contact", fullName, phone, email, subject, message }).catch(() => {});
+  return res.status(201).json({
+    id: doc._id,
+    fullName: doc.fullName,
+    phone: doc.phone,
+    email: doc.email,
+    subject: doc.subject,
+    message: doc.message,
+    createdAt: doc.createdAt.toISOString(),
+  });
+});
+
+router.get("/contacts", requireAuth(["admin"]), async (_req, res) => {
+  const rows = await Contact.find().sort({ createdAt: -1 });
+  return res.json(rows.map((c) => ({
+    id: c._id,
+    fullName: c.fullName,
+    phone: c.phone,
+    email: c.email,
+    subject: c.subject,
+    message: c.message,
+    createdAt: c.createdAt.toISOString(),
+  })));
 });
 
 // ─── ANNOUNCEMENTS ───────────────────────────────────────────────────────────
