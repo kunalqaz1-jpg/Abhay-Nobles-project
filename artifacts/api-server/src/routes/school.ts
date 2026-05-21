@@ -646,7 +646,9 @@ router.post("/admissions", async (req, res) => {
     message: message ?? "",
     status: "pending",
   });
-  sendEnquiryEmail({ type: "admission", studentName, parentName, phone, email, classApplied, message }).catch(() => {});
+  sendEnquiryEmail({ type: "admission", studentName, parentName, phone, email, classApplied, message }).catch((err) => {
+    console.error("[SMTP] Failed to send admission enquiry email:", err?.message ?? err);
+  });
   return res.status(201).json({
     id: doc._id,
     studentName: doc.studentName,
@@ -689,7 +691,9 @@ router.post("/contacts", async (req, res) => {
     return res.status(400).json({ error: "fullName and message required" });
   }
   const doc = await Contact.create({ fullName, phone: phone ?? "", email: email ?? "", subject: subject ?? "", message });
-  sendEnquiryEmail({ type: "contact", fullName, phone, email, subject, message }).catch(() => {});
+  sendEnquiryEmail({ type: "contact", fullName, phone, email, subject, message }).catch((err) => {
+    console.error("[SMTP] Failed to send contact email:", err?.message ?? err);
+  });
   return res.status(201).json({
     id: doc._id,
     fullName: doc.fullName,
