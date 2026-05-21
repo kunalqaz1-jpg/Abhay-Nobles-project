@@ -190,7 +190,6 @@ export default function SchoolWebsite() {
         }
         .sw-root*,.sw-root*::before,.sw-root*::after{box-sizing:border-box;margin:0;padding:0;}
         .sw-root{font-family:var(--font-body);color:var(--text-body);background:var(--cream);overflow-x:hidden;}
-        .sw-top-bg{position:fixed;top:0;left:0;right:0;height:5rem;background:var(--navy);z-index:1;}
 
         .sw-root a{text-decoration:none;color:inherit;}
         .sw-root ul{list-style:none;}
@@ -262,7 +261,8 @@ export default function SchoolWebsite() {
         .sw-overlay.open{opacity:1;visibility:visible;}
 
         /* Announcement Bar — floating pill below navbar */
-        .announcement-bar{position:fixed;top:5rem;left:50%;transform:translateX(-50%);z-index:1099;width:calc(100% - 3rem);max-width:1260px;background:rgba(201,168,76,0.1);backdrop-filter:blur(16px);border:1px solid rgba(201,168,76,0.22);border-radius:100px;padding:0.45rem 1.5rem;overflow:hidden;}
+        .announcement-bar{position:fixed;top:5rem;left:50%;transform:translateX(-50%);z-index:1099;width:calc(100% - 3rem);max-width:1260px;background:rgba(201,168,76,0.1);backdrop-filter:blur(16px);border:1px solid rgba(201,168,76,0.22);border-radius:100px;padding:0.45rem 1.5rem;overflow:hidden;transition:opacity 0.35s ease,transform 0.35s ease,visibility 0.35s ease;}
+        .announcement-bar.hidden{opacity:0;transform:translateX(-50%) translateY(-8px);visibility:hidden;pointer-events:none;}
         .marquee-track{display:flex;align-items:center;gap:3rem;animation:swMarquee 30s linear infinite;white-space:nowrap;}
         .marquee-track:hover{animation-play-state:paused;}
         .marquee-item{font-size:0.78rem;color:rgba(255,255,255,0.8);display:flex;align-items:center;gap:0.6rem;flex-shrink:0;font-weight:500;}
@@ -615,8 +615,6 @@ export default function SchoolWebsite() {
       `}</style>
 
       <div className="sw-root">
-        {/* dark strip behind the floating pill so no cream bleeds through */}
-        <div className="sw-top-bg" />
 
         {/* ── NAVBAR ── */}
         <nav id="sw-navbar" className={scrolled ? "scrolled" : ""}>
@@ -680,7 +678,7 @@ export default function SchoolWebsite() {
         <div className={`sw-overlay ${menuOpen ? "open" : ""}`} onClick={closeMenu} />
 
         {/* ── ANNOUNCEMENT BAR ── */}
-        <div className="announcement-bar">
+        <div className={`announcement-bar${scrolled ? " hidden" : ""}`}>
           <div className="marquee-track">
             {(announcements.length > 0
               ? [...announcements, ...announcements]
