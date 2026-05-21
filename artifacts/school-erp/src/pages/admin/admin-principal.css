@@ -901,49 +901,78 @@
   }
 }
 
+.ap-hamburger {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  border: 1px solid var(--ap-border);
+  background: var(--ap-card);
+  cursor: pointer;
+  display: none;
+  place-items: center;
+  color: var(--ap-text);
+  flex-shrink: 0;
+}
+
+.ap-hamburger:hover {
+  background: var(--ap-bg);
+}
+
+.ap-sidebar-overlay {
+  display: none;
+}
+
 @media (max-width: 900px) {
+  .ap-hamburger {
+    display: grid;
+  }
+
+  .ap-sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    z-index: 44;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+
+  .ap-erp.ap-mobile-open .ap-sidebar-overlay {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
   .ap-erp {
     grid-template-columns: 1fr;
   }
 
   .ap-sidebar {
-    position: relative;
-    min-height: auto;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    padding: 0.5rem;
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 45;
+    width: min(288px, 90vw);
+    min-height: 100vh;
+    transform: translateX(-100%);
+    transition: transform 0.28s ease;
+    box-shadow: none;
+    flex-direction: column;
   }
 
-  .ap-brand {
-    flex: 1;
-    border-bottom: none;
-    padding: 0.5rem;
-  }
-
-  .ap-nav {
-    flex-direction: row;
-    flex-wrap: wrap;
-    width: 100%;
-    max-height: none;
-    padding: 0.5rem;
-  }
-
-  .ap-nav a,
-  .ap-nav button.ap-nav-item {
-    flex: 1 1 auto;
-    justify-content: center;
-    min-width: 120px;
-  }
-
-  .ap-sidebar-footer {
-    width: 100%;
-    grid-template-columns: 1fr 1fr;
-    display: grid;
+  .ap-erp.ap-mobile-open .ap-sidebar {
+    transform: translateX(0);
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.25);
   }
 
   .ap-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ap-badge-status,
+  .ap-date-pill {
+    display: none;
   }
 }
 

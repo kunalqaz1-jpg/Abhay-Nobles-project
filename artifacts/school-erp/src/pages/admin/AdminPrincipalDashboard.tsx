@@ -114,6 +114,7 @@ const NAV_DEF: { id: NavKey; label: string; Icon: typeof IconLayout }[] = [
 
 export default function AdminPrincipalDashboard() {
   const [activeNav, setActiveNav] = useState<NavKey>("dashboard");
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -161,6 +162,7 @@ export default function AdminPrincipalDashboard() {
         setQuickOpen(false);
         setNotifyOpen(false);
         setProfileOpen(false);
+        setMobileOpen(false);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -217,8 +219,9 @@ export default function AdminPrincipalDashboard() {
       : `Demo workspace · ${NAV_DEF.find((n) => n.id === activeNav)?.label ?? ""}`;
 
   return (
-    <div className="ap-erp">
+    <div className={`ap-erp${mobileOpen ? " ap-mobile-open" : ""}`}>
       {toast ? <div className="ap-toast" role="status">{toast}</div> : null}
+      <div className="ap-sidebar-overlay" onClick={() => setMobileOpen(false)} />
 
       {searchOpen ? (
         <div
@@ -280,6 +283,7 @@ export default function AdminPrincipalDashboard() {
               className={`ap-nav-item ${activeNav === item.id ? "ap-nav-active" : ""}`}
               onClick={() => {
                 setActiveNav(item.id);
+                setMobileOpen(false);
                 if (item.id !== "dashboard") showToast(`Opened: ${item.label}`);
               }}
             >
@@ -309,6 +313,18 @@ export default function AdminPrincipalDashboard() {
 
       <div className="ap-main">
         <header className="ap-topbar">
+          <button
+            type="button"
+            className="ap-hamburger"
+            aria-label="Toggle sidebar"
+            onClick={() => setMobileOpen((v) => !v)}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
+              <rect y="3" width="20" height="2" rx="1" fill="currentColor" />
+              <rect y="9" width="20" height="2" rx="1" fill="currentColor" />
+              <rect y="15" width="20" height="2" rx="1" fill="currentColor" />
+            </svg>
+          </button>
           <div className="ap-search-wrap">
             <IconSearch />
             <input
