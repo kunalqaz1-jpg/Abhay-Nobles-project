@@ -128,6 +128,9 @@ export default function AdminPrincipalDashboard() {
 
   useEffect(() => {
     const token = (() => { try { return sessionStorage.getItem("abhay_admin_token") ?? ""; } catch { return ""; } })();
+    if (!token || token === "demo-admin-token") {
+      return;
+    }
     fetch("/api/admin/dashboard", token ? { headers: { Authorization: `Bearer ${token}` } } : undefined)
       .then((r) => r.json())
       .then((data) => {

@@ -1,9 +1,11 @@
 {
   "version": 2,
   "installCommand": "pnpm install",
-  "buildCommand": "pnpm --filter @workspace/school-erp run build",
+  "buildCommand": "pnpm --filter @workspace/school-erp run build && pnpm --filter @workspace/api-server run build",
   "outputDirectory": "public",
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/index" }
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "^/api/(.*)$", "dest": "/api/index" },
+    { "src": "^(.*)$", "dest": "/index.html" }
   ]
 }
