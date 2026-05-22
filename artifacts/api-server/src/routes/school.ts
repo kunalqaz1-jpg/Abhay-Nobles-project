@@ -1,7 +1,9 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import nodemailer from "nodemailer";
 
-declare module "express-serve-static-core" {
+type SessionInfo = { role: "student" | "teacher" | "admin"; id: string; expiresAt: number };
+
+declare module "express" {
   interface Request { session?: SessionInfo; }
 }
 
@@ -21,6 +23,7 @@ import {
   Contact,
   Announcement,
   GalleryImage,
+  Session,
   type IStudent,
   type ITeacher,
 } from "@workspace/db";
@@ -100,32 +103,33 @@ async function sendEnquiryEmail(data: {
   });
 }
 
-// ─── AUTH SESSIONS (in-memory token store) ──────────────────────────────────
+// ─── AUTH SESSIONS (MongoDB-backed token store) ──────────────────────────────
 
-type SessionInfo = { role: "student" | "teacher" | "admin"; id: string; expiresAt: number };
-const sessions = new Map<string, SessionInfo>();
-
-function createToken(role: SessionInfo["role"], id: string): string {
+async function createToken(role: SessionInfo["role"], id: string): Promise<string> {
   const token = randomUUID();
-  sessions.set(token, { role, id, expiresAt: Date.now() + 24 * 60 * 60 * 1000 });
+  await Session.create({
+    token,
+    role,
+    sessionId: id,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  });
   return token;
 }
 
 function requireAuth(roles?: SessionInfo["role"][]) {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
     const header = req.headers.authorization ?? "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : "";
     if (!token) return res.status(401).json({ error: "Unauthorised" });
-    const session = sessions.get(token);
-    if (!session || session.expiresAt < Date.now()) {
-      sessions.delete(token);
+    const sessionDoc = await Session.findOne({ token, expiresAt: { $gt: new Date() } });
+    if (!sessionDoc) {
       return res.status(401).json({ error: "Session expired" });
     }
-    if (roles && !roles.includes(session.role)) {
+    if (roles && !roles.includes(sessionDoc.role)) {
       return res.status(403).json({ error: "Forbidden" });
     }
-    req.session = session;
-    next();
+    req.session = { role: sessionDoc.role, id: sessionDoc.sessionId, expiresAt: sessionDoc.expiresAt.getTime() };
+    return next();
   };
 }
 
@@ -170,7 +174,7 @@ router.post("/students/login", async (req, res) => {
     ? await bcryptjs.compare(password, student.passwordHash)
     : student.passwordHash === password;
   if (!valid) return res.status(401).json({ error: "Invalid student ID or password" });
-  const token = createToken("student", student.studentId);
+  const token = await createToken("student", student.studentId);
   return res.json({ student: formatStudent(student), token });
 });
 
@@ -183,7 +187,7 @@ router.post("/teachers/login", async (req, res) => {
     ? await bcryptjs.compare(password, teacher.passwordHash)
     : teacher.passwordHash === password;
   if (!valid) return res.status(401).json({ error: "Invalid teacher ID or password" });
-  const token = createToken("teacher", teacher.teacherId);
+  const token = await createToken("teacher", teacher.teacherId);
   return res.json({ ...formatTeacher(teacher), token });
 });
 
@@ -196,7 +200,7 @@ router.post("/admin/login", async (req, res) => {
     ? await bcryptjs.compare(password, admin.passwordHash)
     : admin.passwordHash === password;
   if (!valid) return res.status(401).json({ error: "Invalid username or password" });
-  const token = createToken("admin", admin.username);
+  const token = await createToken("admin", admin.username);
   return res.json({ id: admin._id, username: admin.username, token });
 });
 
@@ -271,7 +275,7 @@ router.post("/students", requireAuth(["admin"]), async (req, res) => {
   return res.json(formatStudent(inserted));
 });
 
-router.get("/students/:studentId/dashboard", requireAuth(["student"]), async (req, res) => {
+router.get("/students/:studentId/dashboard", requireAuth(["student"]), async (req: Request, res) => {
   const { studentId } = req.params;
   if (req.session!.id !== studentId) {
     return res.status(403).json({ error: "Forbidden" });

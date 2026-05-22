@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "buildCommand": "pnpm --filter @workspace/school-erp run build",
+  "outputDirectory": "artifacts/school-erp/dist/public",
+  "installCommand": "pnpm install",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index" }
+  ]
+}

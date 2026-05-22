@@ -1,45 +1,73 @@
-# [Project name]
+# School ERP — Shri Abhay Nobles
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A full-stack School ERP system for managing students, teachers, admin operations, attendance, homework, results, notices, and a public-facing school website.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
+- `pnpm --filter @workspace/school-erp run dev` — run the frontend (port 5000)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+
+## Required Environment Variables
+
+| Variable | Where to set | Purpose |
+|---|---|---|
+| `MONGODB_URI` | Replit Secret / Vercel Env | MongoDB Atlas connection string |
+| `SMTP_USER` | Env var | Gmail address for outbound email |
+| `SMTP_PASS` | Replit Secret / Vercel Env | Gmail app password for outbound email |
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- **Monorepo**: pnpm workspaces, Node.js 24, TypeScript 5.9
+- **Frontend**: React 19, Vite 7, Tailwind CSS v4, Wouter (routing), Radix UI, Framer Motion
+- **API**: Express 5, pino logging
+- **DB**: MongoDB Atlas + Mongoose (all models in `lib/db/src/models.ts`)
+- **Auth**: bcryptjs password hashing, MongoDB-backed session tokens (24h TTL, auto-expired via MongoDB TTL index)
+- **Email**: Nodemailer (Gmail SMTP)
+- **API codegen**: Orval (OpenAPI spec → hooks + Zod schemas)
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+```
+artifacts/
+  school-erp/      — React/Vite frontend
+  api-server/      — Express API server
+lib/
+  db/              — MongoDB models (Mongoose) — source of truth: src/models.ts
+  api-spec/        — OpenAPI spec (openapi.yaml)
+  api-client-react/ — Generated React Query hooks
+  api-zod/         — Generated Zod schemas
+api/
+  index.ts         — Vercel serverless entry point (wraps Express app)
+vercel.json        — Vercel deployment configuration
+```
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- **MongoDB only**: The project uses MongoDB/Mongoose exclusively. The `lib/db/src/schema/` Drizzle folder was removed (dead code — app never used Postgres at runtime).
+- **MongoDB-backed sessions**: Login tokens are stored in the `sessions` MongoDB collection with a TTL index for automatic expiry. This replaces the original in-memory Map which would lose sessions on serverless cold starts.
+- **Vercel deployment**: Frontend built as static Vite output; API served as a single Vercel serverless function via `api/index.ts`. Rewrites in `vercel.json` route all `/api/*` traffic to the function.
+- **Dev proxy**: In development, Vite proxies `/api` to `http://localhost:8080` (the local API server). In production on Vercel, `/api` routes to the serverless function at the same domain — no CORS configuration needed.
 
-## Product
+## Vercel Deployment Checklist
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+1. Push code to GitHub
+2. Import repo on vercel.com
+3. Vercel auto-detects `vercel.json` — no framework preset needed
+4. Set environment variables in Vercel dashboard:
+   - `MONGODB_URI` (required)
+   - `SMTP_USER` (optional — for admission/contact emails)
+   - `SMTP_PASS` (optional — Gmail app password)
+5. Deploy
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Deploy target: Vercel
+- Database: MongoDB Atlas (MONGODB_URI secret)
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- `PORT` and `BASE_PATH` are optional in `vite.config.ts` — they default to `5000` and `/` respectively for Vercel builds.
+- The Vercel function entry is `api/index.ts` at the **root** of the repo (not inside `artifacts/`).
+- Sessions use MongoDB TTL index — the `sessions` collection will be auto-created on first login.

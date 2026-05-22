@@ -363,3 +363,23 @@ const GalleryImageSchema = new Schema<IGalleryImage>({
 }, { timestamps: true });
 
 export const GalleryImage: Model<IGalleryImage> = mongoose.models.GalleryImage || mongoose.model<IGalleryImage>("GalleryImage", GalleryImageSchema);
+
+// ─── SESSIONS ────────────────────────────────────────────────────────────────
+
+export interface ISession extends Document {
+  token: string;
+  role: "student" | "teacher" | "admin";
+  sessionId: string;
+  expiresAt: Date;
+}
+
+const SessionSchema = new Schema<ISession>({
+  token: { type: String, required: true, unique: true },
+  role: { type: String, required: true },
+  sessionId: { type: String, required: true },
+  expiresAt: { type: Date, required: true },
+}, { timestamps: true });
+
+SessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+export const Session: Model<ISession> = mongoose.models.Session || mongoose.model<ISession>("Session", SessionSchema);
