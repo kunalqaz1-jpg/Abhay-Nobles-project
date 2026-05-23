@@ -18,7 +18,7 @@ async function apiFetch(path: string, init?: RequestInit) {
     },
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.message || "Request failed");
+  if (!res.ok) throw new Error(data.error || data.message || "Request failed");
   return data;
 }
 
@@ -50,7 +50,19 @@ type DashboardData = {
     parents: { relation: string; name: string; phone: string }[];
     fees: { currentTermStatus: string; currentTermNote: string; nextDueAmount: string; nextDueLabel: string; history: { period: string; amount: string; status: string }[] };
   };
-  attendance: { classWise: { className: string; weeks: { week: string; present: number; absent: number }[]; calendarDays: { day: number; status: string; offset?: number }[] } } | null;
+  attendance:
+    | {
+        className: string;
+        date: string;
+        teacherName: string;
+        updatedAt: string;
+        presentCount: number;
+        absentCount: number;
+        totalStudents: number;
+        studentEntry: { studentId: string; studentName?: string; status: string; remark?: string } | null;
+        entries: { studentId: string; studentName?: string; status: string; remark?: string }[];
+      }
+    | null;
   homework: HomeworkItem[];
   result: ResultItem[] | null;
   notices: { title: string; type: string; date: string }[];
@@ -58,82 +70,6 @@ type DashboardData = {
   timetable: { period: string; time: string; subject: string }[];
   events: { name: string; detail: string; date: string }[];
   messages: { from: string; subject: string; date: string; body: string }[];
-};
-
-const FALLBACK_DATA: DashboardData = {
-  student: {
-    studentId: "AN2024-0842",
-    fullName: "Aarav Sharma",
-    className: "X",
-    section: "A",
-    rollNo: "18",
-    photo: "/demo-student-profile.png",
-    parents: [
-      { relation: "Father", name: "Rajesh Sharma", phone: "+91 98765 41230" },
-      { relation: "Mother", name: "Priya Sharma", phone: "+91 98765 41231" },
-    ],
-    fees: {
-      currentTermStatus: "Paid",
-      currentTermNote: "Quarterly installment for Apr–Jun 2026 received.",
-      nextDueAmount: "₹ 12,400",
-      nextDueLabel: "July 2026",
-      history: [
-        { period: "Jan–Mar 2026", amount: "₹ 12,400", status: "Paid" },
-        { period: "Oct–Dec 2025", amount: "₹ 12,400", status: "Paid" },
-        { period: "Jul–Sep 2025", amount: "₹ 12,200", status: "Paid" },
-      ],
-    },
-  },
-  attendance: {
-    classWise: {
-      className: "X-A",
-      weeks: [
-        { week: "W1 May", present: 5, absent: 0 },
-        { week: "W2 May", present: 4, absent: 1 },
-        { week: "W3 May", present: 5, absent: 0 },
-        { week: "W4 May", present: 4, absent: 1 },
-      ],
-      calendarDays: [],
-    },
-  },
-  homework: [
-    { subject: "Mathematics", title: "Algebra problem set", dueDate: "12 May", status: "Pending", fileName: "algebra-set.pdf", teacherName: "Ms. Neha Sharma" },
-    { subject: "Science", title: "Ray optics worksheet", dueDate: "14 May", status: "Submitted", fileName: "optics-worksheet.pdf", teacherName: "Mr. Ravi Kumar" },
-    { subject: "English", title: "Essay draft — My Hero", dueDate: "16 May", status: "Pending", fileName: "", teacherName: "Ms. Priya Joshi" },
-  ],
-  result: [
-    { id: "1", title: "Yearly Exam Result 2026", subject: "Mathematics", examType: "yearly", fileName: "yearly-result.pdf", teacherName: "Ms. Neha Sharma", createdAt: "10 May" },
-    { id: "2", title: "Half-Yearly Result 2026", subject: "Science", examType: "half-yearly", fileName: "half-yearly-science.pdf", teacherName: "Mr. Ravi Kumar", createdAt: "2 Mar" },
-    { id: "3", title: "Unit Test 1 Result", subject: "English", examType: "unit-test", fileName: "", teacherName: "Ms. Priya Joshi", createdAt: "15 Jan" },
-  ],
-  notices: [
-    { title: "School closed — Eid-ul-Fitr (regional)", type: "Holiday", date: "4 May" },
-    { title: "Final practical exam timetable published", type: "Alert", date: "28 Apr" },
-    { title: "Parent–Teacher Meet — Sat 28 June, 10 AM", type: "PTM", date: "27 Apr" },
-  ],
-  materials: [
-    { title: "NCERT Science — Term II (PDF)", type: "Notes", fileName: "ncert-science-t2.pdf", videoUrl: "" },
-    { title: "Maths — Important questions set", type: "Questions", fileName: "maths-iq.pdf", videoUrl: "" },
-    { title: "Syllabus — Class X RBSE", type: "Syllabus", fileName: "", videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
-  ],
-  timetable: [
-    { period: "I", time: "8:00 – 8:45", subject: "English" },
-    { period: "II", time: "8:45 – 9:30", subject: "Mathematics" },
-    { period: "Break", time: "9:30 – 9:50", subject: "—" },
-    { period: "III", time: "9:50 – 10:35", subject: "Science" },
-    { period: "IV", time: "10:35 – 11:20", subject: "Social Studies" },
-    { period: "V", time: "11:35 – 12:20", subject: "Hindi" },
-    { period: "VI", time: "12:20 – 1:05", subject: "Sports / Activities" },
-  ],
-  events: [
-    { name: "Science Exhibition", detail: "Registered — Stall B4", date: "12 June" },
-    { name: "Inter-school Debate", detail: "Team reserve", date: "22 May" },
-    { name: "Sports Day", detail: "100m heats — Participant", date: "Late June" },
-  ],
-  messages: [
-    { from: "Ms. Neha Sharma (Maths)", subject: "Homework reminder", date: "8 May", body: "Please submit the algebra problem set by 12 May." },
-    { from: "School Office", subject: "Fee receipt", date: "5 May", body: "Your fee payment for Apr–Jun 2026 has been received. Thank you." },
-  ],
 };
 
 export default function StudentPortal() {
@@ -192,7 +128,7 @@ export default function StudentPortal() {
       try {
         const sess = JSON.parse(saved) as { studentId: string; name: string };
         setWelcomeName(sess.name.split(" ")[0]);
-        loadDashboard(sess.studentId);
+        void loadDashboard(sess.studentId, true);
       } catch {
         localStorage.removeItem("abhay_student_session");
       }
@@ -201,16 +137,43 @@ export default function StudentPortal() {
     if (rid) setStudentId(rid);
   }, []);
 
-  async function loadDashboard(sid: string) {
+  async function loadDashboard(sid: string, switchToDashboard = false) {
     try {
       const data = await apiFetch(`/students/${encodeURIComponent(sid)}/dashboard`);
       setDashData(data as DashboardData);
       setWelcomeName((data.student?.fullName || "Student").split(" ")[0]);
-    } catch {
-      setDashData(FALLBACK_DATA);
+      if (switchToDashboard) setView("dashboard");
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to load dashboard.";
+      setLoginError(message || "Unable to load dashboard.");
+      localStorage.removeItem("abhay_student_session");
+      localStorage.removeItem("abhay_student_token");
+      setDashData(null);
+      setWelcomeName("");
+      setView("login");
+      return false;
     }
-    setView("dashboard");
   }
+
+  useEffect(() => {
+    if (view !== "dashboard") return;
+    const saved = localStorage.getItem("abhay_student_session");
+    if (!saved) return;
+
+    let sid = "";
+    try {
+      sid = (JSON.parse(saved) as { studentId: string }).studentId;
+    } catch {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void loadDashboard(sid);
+    }, 15000);
+
+    return () => window.clearInterval(timer);
+  }, [view]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -221,20 +184,22 @@ export default function StudentPortal() {
         method: "POST",
         body: JSON.stringify({ studentId: studentId.trim(), password }),
       });
-      if (data.token) localStorage.setItem("abhay_student_token", data.token);
+      if (!data.token) {
+        throw new Error("Login failed.");
+      }
+      localStorage.setItem("abhay_student_token", data.token);
       localStorage.setItem("abhay_student_session", JSON.stringify({ studentId: studentId.trim(), name: data.student?.fullName || studentId }));
       if (remember) localStorage.setItem("abhay_student_remember_id", studentId.trim());
       setWelcomeName((data.student?.fullName || studentId).split(" ")[0]);
-      await loadDashboard(studentId.trim());
-    } catch {
-      if (studentId.trim() === "AN2024-0842" && password === "1234") {
-        localStorage.setItem("abhay_student_session", JSON.stringify({ studentId: "AN2024-0842", name: "Aarav Sharma" }));
-        if (remember) localStorage.setItem("abhay_student_remember_id", "AN2024-0842");
-        setDashData(FALLBACK_DATA);
-        setWelcomeName("Aarav");
-        setView("dashboard");
+      const dashboardLoaded = await loadDashboard(studentId.trim(), true);
+      if (!dashboardLoaded) {
+        throw new Error("Unable to load student dashboard.");
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message !== "Invalid Student ID or password.") {
+        setLoginError(error.message);
       } else {
-        setLoginError("Invalid Student ID or password. Demo: AN2024-0842 / 1234");
+        setLoginError("Invalid Student ID or password.");
       }
     } finally {
       setLoading(false);
@@ -250,8 +215,21 @@ export default function StudentPortal() {
     setPassword("");
   }
 
-  const student = dashData?.student || FALLBACK_DATA.student;
-  const klass = student.className ? `Class ${student.className} — Section ${student.section}` : "Unassigned";
+  const student = dashData?.student;
+  const latestAttendance = dashData?.attendance as
+    | {
+        date?: string;
+        presentCount?: number;
+        absentCount?: number;
+        studentEntry?: { status?: string };
+      }
+    | null
+    | undefined;
+  const latestAttendanceStatus = latestAttendance?.studentEntry?.status ?? "Unknown";
+  const latestAttendanceLabel = latestAttendance?.date ?? "No record";
+  const latestPresentCount = latestAttendance?.presentCount ?? 0;
+  const latestAbsentCount = latestAttendance?.absentCount ?? 0;
+  const klass = student?.className ? `Class ${student.className} — Section ${student.section}` : "Unassigned";
 
   if (view === "login") {
     return (
@@ -316,7 +294,7 @@ export default function StudentPortal() {
             <form onSubmit={handleLogin} noValidate>
               <div className="sp-group">
                 <label htmlFor="sp-sid">Student ID / Admission Number</label>
-                <input id="sp-sid" type="text" placeholder="e.g. AN2024-0842" value={studentId} onChange={(e) => setStudentId(e.target.value)} autoComplete="username" required />
+                <input id="sp-sid" type="text" placeholder="Enter your admission number" value={studentId} onChange={(e) => setStudentId(e.target.value)} autoComplete="username" required />
               </div>
               <div className="sp-group">
                 <label htmlFor="sp-pw">Password</label>
@@ -331,10 +309,9 @@ export default function StudentPortal() {
               </div>
               <button type="submit" className="sp-btn-login" disabled={loading}>{loading ? "Signing in…" : "Login"}</button>
               <div className="sp-footer-links">
-                Need assistance? <a href="mailto:office@abhaynobles.edu">Help / Contact School</a>
+                Need assistance? <a href="mailto:shriabhaynoble@gmail.com">Help / Contact School</a>
               </div>
             </form>
-            <p className="sp-hint">Demo login: use <strong>AN2024-0842</strong> and password <strong>1234</strong>.</p>
           </div>
 
           {/* Forgot modal */}
@@ -343,16 +320,24 @@ export default function StudentPortal() {
               <div style={{ background: "var(--white)", padding: "1.75rem", borderRadius: "var(--radius)", maxWidth: 380, width: "100%" }}>
                 <h3 style={{ fontFamily: "var(--font-display)", marginBottom: "0.75rem", color: "var(--navy)" }}>Reset password</h3>
                 <p style={{ fontSize: "0.9rem", color: "var(--slate)", marginBottom: "1rem" }}>Contact the school office with your Admission Number for a reset link or temporary password.</p>
-                <p style={{ fontSize: "0.9rem", color: "var(--slate)", marginBottom: 0 }}><strong>School:</strong> <a href="tel:+911234567890">+91 12345 67890</a></p>
+                <p style={{ fontSize: "0.9rem", color: "var(--slate)", marginBottom: 0 }}><strong>School:</strong> <a href="tel:+919413078545">+91 9413078545</a></p>
                 <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end", marginTop: "1rem" }}>
                   <button type="button" style={{ padding: "0.55rem 1rem", borderRadius: 10, fontWeight: 600, fontSize: "0.85rem", background: "#f1f5f9", color: "var(--navy)", border: "1px solid rgba(11,22,40,0.08)", cursor: "pointer", fontFamily: "inherit" }} onClick={() => setForgotOpen(false)}>Close</button>
-                  <a href="mailto:office@abhaynobles.edu" style={{ padding: "0.55rem 1rem", borderRadius: 10, fontWeight: 600, fontSize: "0.85rem", background: "var(--navy)", color: "var(--white)", display: "inline-flex", alignItems: "center", textDecoration: "none" }}>Email Office</a>
+                  <a href="mailto:shriabhaynoble@gmail.com" style={{ padding: "0.55rem 1rem", borderRadius: 10, fontWeight: 600, fontSize: "0.85rem", background: "var(--navy)", color: "var(--white)", display: "inline-flex", alignItems: "center", textDecoration: "none" }}>Email Office</a>
                 </div>
               </div>
             </div>
           )}
         </div>
       </>
+    );
+  }
+
+  if (!student) {
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "Outfit, sans-serif", background: "#f8fafc", color: "#10213b" }}>
+        Loading student dashboard…
+      </div>
     );
   }
 
@@ -503,10 +488,10 @@ export default function StudentPortal() {
                   <div style={{ textAlign: "center" }}>
                     <div className="sp-avatar-ring">
                       <div className="sp-avatar-crop">
-                        <img src={student.photo || "/demo-student-profile.png"} alt={student.fullName} width="200" height="200" />
+                        <img src={student.photo || "/student-profile.png"} alt={student.fullName} width="200" height="200" />
                       </div>
                     </div>
-                    <span className="sp-profile-caption">{student.fullName}<small>Profile photo · demo</small></span>
+                    <span className="sp-profile-caption">{student.fullName}<small>Profile photo</small></span>
                   </div>
                   <div>
                     <h3 style={{ marginBottom: ".75rem" }}>Student Details</h3>
@@ -530,25 +515,33 @@ export default function StudentPortal() {
               <div className="sp-panel">
                 <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><h2>Attendance</h2></div>
                 <div className="sp-stat-row">
-                  {[["92.6%", "Attendance"], ["18", "Days Present"], ["2", "Days Absent"]].map(([v, l]) => (
+                  {[
+                    [latestAttendanceStatus, "Latest Status"],
+                    [String(latestPresentCount), "Present Students"],
+                    [String(latestAbsentCount), "Absent Students"],
+                  ].map(([v, l]) => (
                     <div key={l} className="sp-stat-chip"><div><figure>{v}</figure><span>{l}</span></div></div>
                   ))}
                 </div>
                 <div className="sp-card-grid cols-2">
                   <div className="sp-card">
-                    <h3>Monthly Overview</h3>
+                    <h3>Latest Class Snapshot</h3>
                     <table className="sp-table">
-                      <thead><tr><th>Week</th><th>Present</th><th>Absent</th></tr></thead>
+                      <thead><tr><th>Date</th><th>Present</th><th>Absent</th></tr></thead>
                       <tbody>
-                        {(dashData?.attendance?.classWise?.weeks || FALLBACK_DATA.attendance!.classWise.weeks).map((w) => (
-                          <tr key={w.week}><td>{w.week}</td><td>{w.present}</td><td>{w.absent}</td></tr>
-                        ))}
+                        <tr>
+                          <td>{latestAttendanceLabel}</td>
+                          <td>{latestPresentCount}</td>
+                          <td>{latestAbsentCount}</td>
+                        </tr>
                       </tbody>
                     </table>
                   </div>
                   <div className="sp-card">
                     <h3>Key Info</h3>
-                    <p style={{ fontSize: "0.875rem", color: "var(--slate)", lineHeight: 1.6 }}>Attendance is recorded daily by your class teacher. Contact the school office for any discrepancy. Minimum 75% attendance is required.</p>
+                    <p style={{ fontSize: "0.875rem", color: "var(--slate)", lineHeight: 1.6 }}>
+                      Latest attendance record: {latestAttendanceLabel}. Status: {latestAttendanceStatus}. Contact the school office for any discrepancy.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -562,7 +555,7 @@ export default function StudentPortal() {
                   <table className="sp-table">
                     <thead><tr><th>Subject</th><th>Task</th><th>Due Date</th><th>Status</th><th>File</th></tr></thead>
                     <tbody>
-                      {(dashData?.homework || FALLBACK_DATA.homework).map((h, i) => (
+                      {(dashData?.homework ?? []).map((h, i) => (
                         <tr key={i}>
                           <td>{h.subject}</td>
                           <td>
@@ -595,8 +588,8 @@ export default function StudentPortal() {
                 <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg><h2>Results / Report Card</h2></div>
                 <div className="sp-card">
                   <h3>Uploaded Results — Session 2025–26</h3>
-                  {(dashData?.result || FALLBACK_DATA.result)?.length ? (
-                    (dashData?.result || FALLBACK_DATA.result)!.map((r) => (
+                  {(dashData?.result?.length ?? 0) ? (
+                    (dashData?.result ?? []).map((r) => (
                       <div key={r.id} className="sp-result-card">
                         <div className="sp-result-meta">
                           <strong>{r.title}</strong>
@@ -624,9 +617,9 @@ export default function StudentPortal() {
                 <div className="sp-card-grid cols-2">
                   <div className="sp-card">
                     <h3>Current Term</h3>
-                    <p style={{ marginBottom: ".5rem" }}><span className={`sp-tag ${student.fees.currentTermStatus === "Paid" ? "ok" : "pending"}`}>{student.fees.currentTermStatus}</span></p>
-                    <p style={{ fontSize: ".9rem", color: "var(--slate)" }}>{student.fees.currentTermNote}</p>
-                    <p style={{ marginTop: ".75rem", fontWeight: 600 }}>Next Due: {student.fees.nextDueAmount} — {student.fees.nextDueLabel}</p>
+                    <p style={{ marginBottom: ".5rem" }}><span className={`sp-tag ${student.fees.currentTermStatus === "Paid" ? "ok" : "pending"}`}>{student.fees.currentTermStatus ?? "Pending"}</span></p>
+                    <p style={{ fontSize: ".9rem", color: "var(--slate)" }}>{student.fees.currentTermNote ?? "Fee details will appear here once updated by admin."}</p>
+                    <p style={{ marginTop: ".75rem", fontWeight: 600 }}>Next Due: {student.fees.nextDueAmount ?? "—"} — {student.fees.nextDueLabel ?? "Not set"}</p>
                     <button type="button" className="sp-btn-qr" onClick={openQr}>
                       <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h.01M18 14h.01M14 18h.01M18 18h.01M14 14v4M18 14v4"/></svg>
                       Pay via QR Code
@@ -637,7 +630,7 @@ export default function StudentPortal() {
                     <table className="sp-table">
                       <thead><tr><th>Period</th><th>Amount</th><th>Status</th></tr></thead>
                       <tbody>
-                        {student.fees.history.map((h) => (
+                        {(student.fees.history ?? []).map((h) => (
                           <tr key={h.period}><td>{h.period}</td><td>{h.amount}</td><td><span className={`sp-tag ${h.status === "Paid" ? "ok" : "pending"}`}>{h.status}</span></td></tr>
                         ))}
                       </tbody>
@@ -651,7 +644,7 @@ export default function StudentPortal() {
               <div className="sp-panel">
                 <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg><h2>Notices / Announcements</h2></div>
                 <div className="sp-card">
-                  {(dashData?.notices || FALLBACK_DATA.notices).map((n, i) => (
+                  {(dashData?.notices ?? []).map((n, i) => (
                     <div key={i} className="sp-msg-item">
                       <span className="sp-msg-meta">{n.date} · <strong>{n.type}</strong></span>
                       {n.title}
@@ -668,7 +661,7 @@ export default function StudentPortal() {
                   <table className="sp-table">
                     <thead><tr><th>Resource</th><th>Type</th><th>Actions</th></tr></thead>
                     <tbody>
-                      {(dashData?.materials || FALLBACK_DATA.materials).map((m, i) => (
+                      {(dashData?.materials ?? []).map((m, i) => (
                         <tr key={i}>
                           <td style={{ fontWeight: 500 }}>{m.title}</td>
                           <td><span className="sp-tag pending" style={{ background: "#f0f9ff", color: "#0369a1" }}>{m.type}</span></td>
@@ -694,7 +687,7 @@ export default function StudentPortal() {
               <div className="sp-panel">
                 <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><h2>Timetable — Monday</h2></div>
                 <div className="sp-card">
-                  {(dashData?.timetable || FALLBACK_DATA.timetable).map((t, i) => (
+                  {(dashData?.timetable ?? []).map((t, i) => (
                     <div key={i} className="sp-tslot"><span>{t.period} · {t.time}</span><strong>{t.subject}</strong></div>
                   ))}
                 </div>
@@ -705,7 +698,7 @@ export default function StudentPortal() {
               <div className="sp-panel">
                 <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><h2>Events</h2></div>
                 {(() => {
-                  const allEvents = dashData?.events || FALLBACK_DATA.events;
+                  const allEvents = dashData?.events ?? [];
                   if (!allEvents.length) return (
                     <div className="sp-card"><p style={{ color: "var(--slate)", fontSize: "0.9rem" }}>No upcoming events. Check back soon.</p></div>
                   );
@@ -731,7 +724,7 @@ export default function StudentPortal() {
               <div className="sp-panel">
                 <div className="sp-section-head"><svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg><h2>Messages</h2></div>
                 <div className="sp-card">
-                  {(dashData?.messages || FALLBACK_DATA.messages).map((m, i) => (
+                  {(dashData?.messages ?? []).map((m, i) => (
                     <div key={i} className="sp-msg-item">
                       <span className="sp-msg-meta">{m.date} · <strong>{m.from}</strong> — {m.subject}</span>
                       {m.body}

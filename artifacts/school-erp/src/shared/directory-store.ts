@@ -45,6 +45,10 @@ export type TeacherDirectoryRecord = {
   assignedClasses: string[];
 };
 
+export type TeacherUpsertPayload = TeacherDirectoryRecord & {
+  password?: string;
+};
+
 export async function getStudents() {
   return apiRequest<StudentDirectoryRecord[]>("/students");
 }
@@ -60,7 +64,7 @@ export async function getTeachers() {
   return apiRequest<TeacherDirectoryRecord[]>("/teachers");
 }
 
-export async function saveTeacher(record: TeacherDirectoryRecord) {
+export async function saveTeacher(record: TeacherUpsertPayload) {
   return apiRequest<TeacherDirectoryRecord>("/teachers", {
     method: "POST",
     body: JSON.stringify(record),

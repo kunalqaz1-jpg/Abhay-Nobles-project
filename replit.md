@@ -17,6 +17,26 @@ A full-stack School ERP system for managing students, teachers, admin operations
 | `SMTP_USER` | Env var | Gmail address for outbound email |
 | `SMTP_PASS` | Replit Secret / Vercel Env | Gmail app password for outbound email |
 
+## Quick Setup For Real Admin Login
+
+1. Configure environment variables locally or in Vercel:
+   - `MONGODB_URI`
+   - `SMTP_USER`
+   - `SMTP_PASS`
+2. For local setup, copy `.env.example` values into your shell before running commands.
+3. Create or update the real admin user:
+   - `pnpm --filter @workspace/scripts run admin:create -- --username admin --password yourStrongPassword`
+4. Log in from `/admin/login` with the username and password you created.
+
+### PowerShell example
+
+```powershell
+$env:MONGODB_URI="your-mongodb-connection-string"
+$env:SMTP_USER="your-gmail-address"
+$env:SMTP_PASS="your-gmail-app-password"
+pnpm --filter @workspace/scripts run admin:create -- --username admin --password yourStrongPassword
+```
+
 ## Stack
 
 - **Monorepo**: pnpm workspaces, Node.js 24, TypeScript 5.9

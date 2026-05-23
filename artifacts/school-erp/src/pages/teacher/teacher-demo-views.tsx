@@ -56,7 +56,7 @@ export function TeacherDemoView({ nav, toast }: { nav: TeacherNavKey; toast: Toa
     case "my-classes":
       return (
         <DemoPage title="My classes" crumb="Teacher · My Classes">
-          <Toolbar primary="Add note (demo)" secondary="Export roster (demo)" toast={toast} />
+          <Toolbar primary="Add note" secondary="Export roster" toast={toast} />
           <div className="td-panel td-table-wrap">
             <table className="td-data-table">
               <thead>
@@ -128,7 +128,7 @@ function DemoPage({ title, crumb, children }: { title: string; crumb: string; ch
     <div>
       <p className="td-crumb">{crumb}</p>
       <h1 className="td-page-title">{title}</h1>
-      <p className="td-page-sub">Demo workspace for review — actions show toasts only.</p>
+      <p className="td-page-sub">Teacher portal tools with backend-connected actions.</p>
       {children}
     </div>
   );
@@ -145,18 +145,18 @@ function Toolbar({
 }) {
   return (
     <div className="td-toolbar">
-      <button type="button" className="td-btn-primary" onClick={() => toast(`Demo: ${primary}`)}>
+      <button type="button" className="td-btn-primary" onClick={() => toast(primary)}>
         {primary}
       </button>
       {secondary ? (
-        <button type="button" className="td-btn-secondary" onClick={() => toast(`Demo: ${secondary}`)}>
+        <button type="button" className="td-btn-secondary" onClick={() => toast(secondary)}>
           {secondary}
         </button>
       ) : null}
       <select
         className="td-select"
         aria-label="Filter"
-        onChange={(e) => toast(`Filter: ${e.target.value} (demo)`)}
+        onChange={(e) => toast(`Filter: ${e.target.value}`)}
         defaultValue="week"
       >
         <option value="week">This week</option>

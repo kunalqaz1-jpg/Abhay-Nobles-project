@@ -40,8 +40,12 @@ export default function SchoolWebsite() {
   const [facilityImgs, setFacilityImgs] = useState<string[]>([]);
   const [studentLifeImgs, setStudentLifeImgs] = useState<string[]>([]);
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
+  const [principalMessageOpen, setPrincipalMessageOpen] = useState(false);
+  const [principalMessageExpanded, setPrincipalMessageExpanded] = useState(false);
   const [admitSubmitted, setAdmitSubmitted] = useState(false);
+  const [admitError, setAdmitError] = useState("");
   const [contactSubmitted, setContactSubmitted] = useState(false);
+  const [contactError, setContactError] = useState("");
   const barsAnimated = useRef(false);
 
   const [announcements, setAnnouncements] = useState<string[]>([]);
@@ -82,6 +86,14 @@ export default function SchoolWebsite() {
   }, []);
 
   useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPrincipalMessageOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
     apiRequest<{ id: number; text: string; isActive: boolean; sortOrder: number }[]>("/announcements")
       .then((rows) => { if (rows.length > 0) setAnnouncements(rows.map((r) => r.text)); })
       .catch(() => {});
@@ -89,6 +101,8 @@ export default function SchoolWebsite() {
 
   async function handleAdmitSubmit() {
     if (!admitForm.studentName || !admitForm.phone) return;
+    setAdmitError("");
+    setAdmitSubmitted(false);
     setAdmitLoading(true);
     try {
       await apiRequest("/admissions", {
@@ -98,9 +112,9 @@ export default function SchoolWebsite() {
       setAdmitSubmitted(true);
       setAdmitForm({ parentName: "", phone: "", studentName: "", classApplied: "", email: "" });
       setTimeout(() => setAdmitSubmitted(false), 5000);
-    } catch {
-      setAdmitSubmitted(true);
-      setTimeout(() => setAdmitSubmitted(false), 4000);
+    } catch (error) {
+      setAdmitError(error instanceof Error ? error.message : "We could not submit your enquiry right now.");
+      setTimeout(() => setAdmitError(""), 5000);
     } finally {
       setAdmitLoading(false);
     }
@@ -108,6 +122,8 @@ export default function SchoolWebsite() {
 
   async function handleContactSubmit() {
     if (!contactForm.fullName || !contactForm.message) return;
+    setContactError("");
+    setContactSubmitted(false);
     setContactLoading(true);
     try {
       await apiRequest("/contacts", {
@@ -117,9 +133,9 @@ export default function SchoolWebsite() {
       setContactSubmitted(true);
       setContactForm({ fullName: "", phone: "", email: "", subject: "", message: "" });
       setTimeout(() => setContactSubmitted(false), 5000);
-    } catch {
-      setContactSubmitted(true);
-      setTimeout(() => setContactSubmitted(false), 4000);
+    } catch (error) {
+      setContactError(error instanceof Error ? error.message : "We could not send your message right now.");
+      setTimeout(() => setContactError(""), 5000);
     } finally {
       setContactLoading(false);
     }
@@ -202,6 +218,17 @@ export default function SchoolWebsite() {
   }, []);
 
   const filteredGallery = galleryFilter === "all" ? galleryItems : galleryItems.filter((g) => g.cat === galleryFilter);
+  const principalMessagePreview = [
+    "Dear Students, Parents, and Visitors,",
+    "It gives me immense pleasure to welcome you to our school website. Education is not merely the process of acquiring knowledge, but it is the foundation for building character, confidence, discipline, and responsibility. Our institution is committed to providing a learning environment where every student is encouraged to discover their true potential and develop into responsible citizens of society.",
+    "At our school, we believe that every child is unique and possesses special talents. Our dedicated teachers continuously strive to nurture academic excellence while also focusing on moral values, creativity, leadership, and overall personality development. We aim to create an atmosphere where learning becomes enjoyable, meaningful, and inspiring.",
+  ];
+  const principalMessageMore = [
+    "In today’s rapidly changing world, education must go beyond textbooks. Therefore, we encourage innovation, critical thinking, digital learning, sportsmanship, and cultural participation so that our students become confident individuals ready to face future challenges with courage and wisdom.",
+    "We strongly believe that the combined efforts of students, teachers, and parents create the strongest foundation for success. Together, we can shape a brighter future for our children and help them achieve excellence in every field of life.",
+    "I sincerely thank all parents and well-wishers for their continuous trust and support towards our institution. Let us continue this journey of knowledge, discipline, and success together.",
+    "Wishing all our students a future filled with achievement, happiness, and endless opportunities.",
+  ];
 
   return (
     <>
@@ -749,7 +776,7 @@ export default function SchoolWebsite() {
                     Shaping<br /><em>Future Leaders</em><br />of Tomorrow
                   </h1>
                   <p className="hero-sub reveal">
-                    Where excellence meets opportunity. We nurture curious minds, build strong characters, and unlock every child's true potential in a world-class learning environment.
+                    Shri Abhay Nobles Senior Secondary School in Takhatgarh, Rajasthan combines RBSE-focused academics, experienced teachers, modern facilities, and values-based learning to help every child grow with confidence.
                   </p>
                   <div className="hero-btns reveal">
                     <a href="#admission" className="btn btn-gold btn-lg">
@@ -1042,15 +1069,24 @@ export default function SchoolWebsite() {
                   <label>Email Address</label>
                   <input type="email" placeholder="your@email.com" value={admitForm.email} onChange={(e) => setAdmitForm((f) => ({ ...f, email: e.target.value }))} />
                 </div>
-                <button
-                  type="button"
-                  className="btn btn-gold"
-                  style={{ width: "100%", justifyContent: "center", padding: "1rem" }}
-                  onClick={handleAdmitSubmit}
-                  disabled={admitLoading}
-                >
-                  {admitSubmitted ? "✓ Inquiry Submitted! We'll Call You Soon" : admitLoading ? "Submitting..." : "Submit Inquiry — We'll Call You Back 📞"}
-                </button>
+                    <button
+                      type="button"
+                      className="btn btn-gold"
+                      style={{ width: "100%", justifyContent: "center", padding: "1rem" }}
+                      onClick={handleAdmitSubmit}
+                      disabled={admitLoading}
+                    >
+                      {admitSubmitted
+                        ? "✓ Inquiry Submitted! We'll Call You Soon"
+                        : admitLoading
+                          ? "Submitting..."
+                          : admitError
+                            ? "Submission Failed - Try Again"
+                            : "Submit Inquiry - We'll Call You Back"}
+                    </button>
+                    {admitError ? (
+                      <p style={{ marginTop: "0.75rem", fontSize: "0.82rem", color: "#b91c1c" }}>{admitError}</p>
+                    ) : null}
                 <p style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.35)", textAlign: "center", marginTop: "1rem" }}>🔒 Your information is 100% safe and secure</p>
               </div>
             </div>
@@ -1110,21 +1146,31 @@ export default function SchoolWebsite() {
                   Education is not the filling of a pail, but the lighting of a fire. At Abhay Nobles, we ignite the spark of curiosity, discipline, and ambition in every young mind that enters our gates.
                 </div>
                 <div style={{ marginTop: "1.5rem" }}>
-                  <div className="principal-name">Mr. Sambhoo Singh</div>
-                  <div className="principal-title">Principal, Abhay Nobles | M.Ed., Ph.D. in Education | 25+ Years Experience</div>
+                  <div className="principal-name">Mr. Shambhu Singh Balot</div>
+                  <div className="principal-title">Principal, Abhay Nobles | M.Sc., M.A., B.Ed. | 25 Years Experience</div>
                 </div>
                 <div className="principal-actions">
-                  <a href="#" className="btn btn-gold" style={{ fontSize: "0.85rem", padding: "0.65rem 1.25rem" }}>Read Full Message</a>
+                  <button
+                    type="button"
+                    className="btn btn-gold"
+                    style={{ fontSize: "0.85rem", padding: "0.65rem 1.25rem" }}
+                    onClick={() => {
+                      setPrincipalMessageExpanded(false);
+                      setPrincipalMessageOpen(true);
+                    }}
+                  >
+                    Read Full Message
+                  </button>
                   <a href="#contact" className="btn btn-outline" style={{ fontSize: "0.85rem", padding: "0.65rem 1.25rem" }}>Book Appointment</a>
                 </div>
               </div>
             </div>
             <div className="teachers-grid">
               {[
-                { img: "/faculty-bhavesh-suthar.png", name: "Mr. Bhavesh Suthar", dept: "Head of Science", qual: "M.Sc. Physics · 15 Years Exp.", delay: "reveal-delay-1" },
-                { img: "/faculty-kantilal.png", name: "Mr. Kantilal", dept: "English & Literature", qual: "M.A. English · 12 Years Exp.", delay: "reveal-delay-2" },
-                { img: "/faculty-pandey.png", name: "Mr. Pandey", dept: "Mathematics & Coding", qual: "M.Sc. Math · B.Tech · 10 Years", delay: "reveal-delay-3" },
-                { img: "/faculty-nuton-singh.png", name: "Mr. Nuton Singh", dept: "Social Studies", qual: "M.A. History · 18 Years Exp.", delay: "reveal-delay-4" },
+                { img: "/faculty-bhavesh-suthar.png", name: "Mr. Bhavesh Suthar", dept: "Tutor Chemistry", qual: "M.Sc. · 7 Years Exp.", delay: "reveal-delay-1" },
+                { img: "/faculty-kantilal.png", name: "Mr. Kanti Lal", dept: "Lecturer (English)", qual: "M.A. · B.Ed. · 10 Years Exp.", delay: "reveal-delay-2" },
+                { img: "/faculty-pandey.png", name: "Mr. Rangnath Panday", dept: "Lecturer (Mathematics)", qual: "M.Sc. · B.Ed. · 21 Years Exp.", delay: "reveal-delay-3" },
+                { img: "/faculty-nuton-singh.png", name: "Mr. Nuton Singh", dept: "Social Studies", qual: "M.Sc. · 7 Years Exp.", delay: "reveal-delay-4" },
               ].map((tc) => (
                 <div key={tc.name} className={`teacher-card reveal ${tc.delay}`}>
                   <div className="teacher-photo">
@@ -1341,9 +1387,9 @@ export default function SchoolWebsite() {
                 <div className="contact-details" style={{ marginTop: "2rem" }}>
                   {[
                     { icon: "📍", label: "Address", value: "Near Ganpat Colony\nTakhatgarh, Rajasthan, 306901" },
-                    { icon: "📞", label: "Phone", value: "9928613702\nMon–Sat: 9:00 AM – 2:00 PM" },
-                    { icon: "💬", label: "WhatsApp", value: "+91 9928613702" },
-                    { icon: "✉️", label: "Email", value: "kunal4642m@gmail.com" },
+                    { icon: "📞", label: "Phone", value: "9413078545\nMon–Sat: 9:00 AM – 2:00 PM" },
+                    { icon: "💬", label: "WhatsApp", value: "+91 9413078545" },
+                    { icon: "✉️", label: "Email", value: "shriabhaynoble@gmail.com" },
                   ].map((cd) => (
                     <div key={cd.label} className="contact-detail">
                       <div className="contact-detail-icon">{cd.icon}</div>
@@ -1382,7 +1428,7 @@ export default function SchoolWebsite() {
                       </div>
                       <div className="form-group">
                         <label>Phone Number</label>
-                        <input type="tel" placeholder="+91 9928613702" value={contactForm.phone} onChange={(e) => setContactForm((f) => ({ ...f, phone: e.target.value }))} />
+                        <input type="tel" placeholder="+91 9413078545" value={contactForm.phone} onChange={(e) => setContactForm((f) => ({ ...f, phone: e.target.value }))} />
                       </div>
                     </div>
                     <div className="form-group">
@@ -1413,11 +1459,60 @@ export default function SchoolWebsite() {
                       onClick={handleContactSubmit}
                       disabled={contactLoading}
                     >
-                      {contactSubmitted ? "✓ Message Sent Successfully!" : contactLoading ? "Sending..." : "Send Message →"}
+                      {contactSubmitted
+                        ? "✓ Message Sent Successfully!"
+                        : contactLoading
+                          ? "Sending..."
+                          : contactError
+                            ? "Message Failed - Try Again"
+                            : "Send Message ->"}
                     </button>
+                    {contactError ? (
+                      <p style={{ marginTop: "0.75rem", fontSize: "0.82rem", color: "#b91c1c" }}>{contactError}</p>
+                    ) : null}
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="section-pad" style={{ background: "#f8fafc" }}>
+          <div className="container-sm">
+            <div className="text-center reveal" style={{ marginBottom: "2.5rem" }}>
+              <div className="section-label" style={{ justifyContent: "center" }}>Admissions FAQ</div>
+              <h2 className="display-md" style={{ color: "var(--navy)", marginTop: "0.75rem" }}>
+                Common <em style={{ fontStyle: "italic", color: "var(--gold)" }}>Questions</em> from Parents
+              </h2>
+              <div className="gold-line center" />
+              <p className="body-md" style={{ maxWidth: 720, margin: "1rem auto 0", color: "var(--text-body)" }}>
+                These answers help families searching for the best school in Takhatgarh understand admissions, curriculum, campus access, and how to contact the school quickly.
+              </p>
+            </div>
+            <div style={{ display: "grid", gap: "1rem" }}>
+              {[
+                {
+                  q: "Are admissions open for the current academic session?",
+                  a: "Yes. Shri Abhay Nobles Senior Secondary School is accepting admission enquiries for the current session, and parents can request a callback or download the prospectus online.",
+                },
+                {
+                  q: "Which curriculum does the school follow?",
+                  a: "The school focuses on RBSE-aligned academics while also supporting sports, co-curricular activities, discipline, and complete student development.",
+                },
+                {
+                  q: "Where is the school located?",
+                  a: "The campus is located near Ganpat Colony, Takhatgarh, Pali district, Rajasthan 306901, making it convenient for local families seeking quality senior secondary education.",
+                },
+                {
+                  q: "How can parents contact the school?",
+                  a: "Parents can call 9413078545, send a website enquiry, use WhatsApp, or visit the campus directly to discuss admissions, fees, facilities, and academics.",
+                },
+              ].map((item) => (
+                <article key={item.q} style={{ background: "#fff", borderRadius: "16px", padding: "1.25rem 1.5rem", boxShadow: "0 16px 40px rgba(11,22,40,0.06)" }}>
+                  <h3 style={{ margin: 0, color: "#0b1628", fontSize: "1rem", fontWeight: 700 }}>{item.q}</h3>
+                  <p style={{ margin: "0.65rem 0 0", color: "#475569", lineHeight: 1.7, fontSize: "0.95rem" }}>{item.a}</p>
+                </article>
+              ))}
             </div>
           </div>
         </section>
@@ -1493,7 +1588,7 @@ export default function SchoolWebsite() {
               <div className="footer-bottom-links">
                 <a href="#">Privacy</a>
                 <a href="#">Terms</a>
-                <a href="#">Sitemap</a>
+                <a href="/sitemap.xml">Sitemap</a>
                 <a href="#">Careers</a>
               </div>
             </div>
@@ -1502,7 +1597,7 @@ export default function SchoolWebsite() {
 
         {/* ── FLOATING WHATSAPP ── */}
         <div className="whatsapp-float">
-          <a href="https://wa.me/919928613702" className="whatsapp-btn" target="_blank" rel="noopener noreferrer">
+          <a href="https://wa.me/919413078545" className="whatsapp-btn" target="_blank" rel="noopener noreferrer">
             <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
             </svg>
@@ -1575,6 +1670,67 @@ export default function SchoolWebsite() {
             <div className="gallery-lightbox-inner" onClick={(e) => e.stopPropagation()}>
               <button type="button" className="gallery-lightbox-close" onClick={() => setLightbox(null)} aria-label="Close">&times;</button>
               <img src={lightbox.src} alt={lightbox.alt} />
+            </div>
+          </div>
+        )}
+
+        {principalMessageOpen && (
+          <div
+            style={{ position: "fixed", inset: 0, background: "rgba(11,22,40,0.8)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}
+            onClick={() => setPrincipalMessageOpen(false)}
+          >
+            <div
+              style={{ background: "#fff", color: "#0b1628", borderRadius: "22px", width: "100%", maxWidth: "760px", maxHeight: "88vh", overflowY: "auto", boxShadow: "0 32px 90px rgba(11,22,40,0.35)", position: "relative" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setPrincipalMessageOpen(false)}
+                aria-label="Close principal message"
+                style={{ position: "absolute", top: "1rem", right: "1rem", border: "none", background: "#f1f5f9", color: "#334155", width: "40px", height: "40px", borderRadius: "999px", fontSize: "1.35rem", cursor: "pointer", lineHeight: 1 }}
+              >
+                ×
+              </button>
+              <div style={{ padding: "2rem 2rem 1.5rem", borderBottom: "1px solid #e2e8f0", background: "linear-gradient(135deg,#fff7e0,#ffffff)" }}>
+                <p style={{ margin: 0, fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "#b8891b" }}>Faculty Desk</p>
+                <h2 style={{ margin: "0.45rem 0 0", fontSize: "clamp(1.5rem, 3vw, 2rem)", lineHeight: 1.2, fontFamily: "'Cormorant Garamond', serif" }}>Message From The Principal</h2>
+              </div>
+              <div style={{ padding: "1.75rem 2rem 2rem" }}>
+                {principalMessagePreview.map((paragraph, index) => (
+                  <p key={`principal-preview-${index}`} style={{ margin: "0 0 1rem", lineHeight: 1.8, color: index === 0 ? "#0f172a" : "#334155", fontWeight: index === 0 ? 700 : 400 }}>
+                    {paragraph}
+                  </p>
+                ))}
+
+                {!principalMessageExpanded ? (
+                  <div style={{ position: "relative", marginTop: "0.5rem", paddingTop: "1.5rem" }}>
+                    <div style={{ position: "absolute", inset: "0 0 auto 0", height: "54px", background: "linear-gradient(180deg, rgba(255,255,255,0), #ffffff)" }} />
+                    <div style={{ textAlign: "center" }}>
+                      <button
+                        type="button"
+                        className="btn btn-gold"
+                        onClick={() => setPrincipalMessageExpanded(true)}
+                        style={{ padding: "0.8rem 1.6rem" }}
+                      >
+                        See more
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {principalMessageMore.map((paragraph, index) => (
+                      <p key={`principal-more-${index}`} style={{ margin: "0 0 1rem", lineHeight: 1.8, color: "#334155" }}>
+                        {paragraph}
+                      </p>
+                    ))}
+                    <div style={{ marginTop: "1.5rem", paddingTop: "1.25rem", borderTop: "1px solid #e2e8f0" }}>
+                      <p style={{ margin: 0, fontWeight: 700, color: "#0f172a" }}>With Best Wishes,</p>
+                      <p style={{ margin: "0.2rem 0 0", fontWeight: 700, color: "#0f172a" }}>Principal</p>
+                      <p style={{ margin: "0.2rem 0 0", color: "#475569" }}>Shri Abhay Nobles School</p>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         )}

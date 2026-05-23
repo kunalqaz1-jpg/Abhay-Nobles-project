@@ -1,28 +1,12 @@
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
 
-const DEMO_TEACHER = {
-  username: "T-402",
-  password: "teacher123",
-  session: {
-    teacherId: "T-402",
-    name: "Rahul Sharma",
-    subject: "Mathematics",
-  },
-};
-
 export default function TeacherLogin() {
   const [, setLocation] = useLocation();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  function openDemoDashboard() {
-    sessionStorage.setItem("abhay_teacher_session", JSON.stringify(DEMO_TEACHER.session));
-    sessionStorage.setItem("abhay_teacher_token", "demo-teacher-token");
-    setLocation("/teacher/dashboard");
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -40,14 +24,6 @@ export default function TeacherLogin() {
       if (data.token) sessionStorage.setItem("abhay_teacher_token", data.token);
       setLocation("/teacher/dashboard");
     } catch {
-      const normalizedUsername = username.trim().toUpperCase();
-      if (
-        (normalizedUsername === DEMO_TEACHER.username || normalizedUsername === "TEACHER") &&
-        password === DEMO_TEACHER.password
-      ) {
-        openDemoDashboard();
-        return;
-      }
       setError("Invalid credentials. Use your Staff ID and password.");
     } finally {
       setLoading(false);
@@ -102,7 +78,7 @@ export default function TeacherLogin() {
             </div>
             <button type="submit" className="erp-btn" disabled={loading}>{loading ? "Signing in…" : "Login"}</button>
           </form>
-          <p className="erp-hint">Demo: <strong>T-402</strong> / <strong>teacher123</strong></p>
+          <p className="erp-hint">Use your staff ID and password to sign in.</p>
           <div className="erp-footer">
             <Link href="/admin/login">Switch to Admin Portal →</Link>
           </div>

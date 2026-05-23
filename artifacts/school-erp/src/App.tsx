@@ -10,6 +10,7 @@ import AdminLogin from "@/pages/admin/AdminLogin";
 import TeacherDashboardClient from "@/pages/teacher/TeacherDashboardClient";
 import AdminPrincipalDashboard from "@/pages/admin/AdminPrincipalDashboard";
 import NotFound from "@/pages/not-found";
+import { SeoManager } from "@/components/seo";
 
 const queryClient = new QueryClient();
 
@@ -33,6 +34,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <SeoManager />
           <Router />
         </WouterRouter>
         <Toaster />

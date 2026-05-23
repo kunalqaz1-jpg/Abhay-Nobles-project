@@ -16,6 +16,7 @@ type JoinedTeacher = {
   qualification: string;
   joinDate: string;
   phone: string;
+  password: string;
 };
 
 type EmployeeRecord = {
@@ -116,6 +117,7 @@ const initialJoinedTeachers: JoinedTeacher[] = [
     qualification: "M.Sc., B.Ed.",
     joinDate: "06 May 2026",
     phone: "+91 98765 12001",
+    password: "teacher123",
   },
   {
     id: "JT-102",
@@ -124,6 +126,7 @@ const initialJoinedTeachers: JoinedTeacher[] = [
     qualification: "MCA, B.Tech",
     joinDate: "08 May 2026",
     phone: "+91 98765 12002",
+    password: "teacher123",
   },
 ];
 
@@ -589,6 +592,7 @@ function TeachersInteractive({ toast }: { toast: ToastFn }) {
               qualification: teacher.qualification,
               joinDate: teacher.joinDate,
               phone: teacher.phone,
+              password: "",
             })),
           );
         }
@@ -621,7 +625,7 @@ function TeachersInteractive({ toast }: { toast: ToastFn }) {
     const nextId = `TCH-${joinedTeachers.length + 3001}`;
     setJoinedTeachers((current) => [
       ...current,
-      { id: nextId, name: "", subject: "", qualification: "", joinDate: "", phone: "" },
+      { id: nextId, name: "", subject: "", qualification: "", joinDate: "", phone: "", password: "teacher123" },
     ]);
     setRowDetail(`Added new teacher card ${nextId}`);
     toast("New teacher card added");
@@ -651,6 +655,7 @@ function TeachersInteractive({ toast }: { toast: ToastFn }) {
               joinDate: teacher.joinDate,
               phone: teacher.phone,
               assignedClasses: [],
+              password: teacher.password.trim() || undefined,
             }),
           ),
       );
@@ -731,6 +736,15 @@ function TeachersInteractive({ toast }: { toast: ToastFn }) {
                     value={teacher.phone}
                     onChange={(e) => updateJoinedTeacher(teacher.id, "phone", e.target.value)}
                     placeholder="+91"
+                  />
+                </label>
+                <label className="ap-staff-field">
+                  <span>Portal Password</span>
+                  <input
+                    type="text"
+                    value={teacher.password}
+                    onChange={(e) => updateJoinedTeacher(teacher.id, "password", e.target.value)}
+                    placeholder="Required for teacher login"
                   />
                 </label>
               </div>

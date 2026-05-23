@@ -160,6 +160,41 @@ function formatTeacher(t: ITeacher) {
   };
 }
 
+function matchesStudentClass(student: IStudent, className?: string, section?: string) {
+  if (!className) return true;
+  if (student.className !== className) return false;
+  if (!section) return true;
+  return student.section === section;
+}
+
+function formatAttendanceSummary(
+  record: {
+    className: string;
+    date: string;
+    teacherName: string;
+    updatedAt: Date;
+    entries?: Array<{ studentId: string; studentName?: string; status: string; remark?: string }>;
+  },
+  studentId?: string,
+) {
+  const entries = record.entries ?? [];
+  const presentCount = entries.filter((entry) => entry.status === "Present").length;
+  const absentCount = entries.filter((entry) => entry.status !== "Present").length;
+  const studentEntry = studentId ? entries.find((entry) => entry.studentId === studentId) ?? null : null;
+
+  return {
+    className: record.className,
+    date: record.date,
+    teacherName: record.teacherName,
+    updatedAt: record.updatedAt.toISOString(),
+    presentCount,
+    absentCount,
+    totalStudents: entries.length,
+    studentEntry,
+    entries,
+  };
+}
+
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 
 router.post("/students/login", async (req, res) => {
@@ -207,11 +242,15 @@ router.post("/admin/login", async (req, res) => {
 // ─── ADMIN DASHBOARD ─────────────────────────────────────────────────────────
 
 router.get("/admin/dashboard", requireAuth(["admin"]), async (_req, res) => {
-  const [students, teachers, admissions, attendanceRows] = await Promise.all([
+  const [students, teachers, admissions, attendanceRows, notices, events, timetableRows, contacts] = await Promise.all([
     Student.find(),
     Teacher.find(),
     Admission.find().sort({ createdAt: -1 }).limit(5),
     AttendanceRecord.find().sort({ updatedAt: -1 }).limit(5),
+    Notice.find().sort({ createdTs: -1 }).limit(10),
+    Event.find().sort({ createdTs: -1 }).limit(10),
+    TimetableRow.find().sort({ updatedTs: -1 }).limit(20),
+    Contact.find().sort({ createdAt: -1 }).limit(10),
   ]);
 
   const kpis = [
@@ -233,15 +272,57 @@ router.get("/admin/dashboard", requireAuth(["admin"]), async (_req, res) => {
     createdAt: a.createdAt.toISOString(),
   }));
 
-  const recentAttendance = attendanceRows.map((r) => ({
+  const recentAttendance = attendanceRows.map((r) => formatAttendanceSummary({
     className: r.className,
     date: r.date,
     teacherName: r.teacherName,
-    updatedAt: r.updatedAt.toISOString(),
-    entries: r.entries ?? [],
+    updatedAt: r.updatedAt,
+    entries: (r.entries as Array<{ studentId: string; studentName?: string; status: string; remark?: string }>) ?? [],
   }));
 
-  return res.json({ kpis, recentAdmissions, recentAttendance, recentFees: [] });
+  return res.json({
+    kpis,
+    recentAdmissions,
+    recentAttendance,
+    recentFees: [],
+    students: students.map(formatStudent),
+    teachers: teachers.map(formatTeacher),
+    notices: notices.map((n) => ({
+      id: n.noticeId,
+      title: n.title,
+      description: n.description,
+      audience: n.audience,
+      className: n.className,
+      teacherName: n.teacherName,
+      createdAt: n.createdAt,
+    })),
+    events: events.map((e) => ({
+      id: e.eventId,
+      className: e.className,
+      title: e.title,
+      description: e.description,
+      eventDate: e.eventDate,
+      teacherName: e.teacherName,
+      createdAt: e.createdAt,
+    })),
+    timetable: timetableRows.map((t) => ({
+      id: t.rowId,
+      className: t.className,
+      period: t.period,
+      subject: t.subject,
+      time: t.time,
+      updatedAt: t.updatedAt,
+    })),
+    contacts: contacts.map((c) => ({
+      id: c._id,
+      fullName: c.fullName,
+      phone: c.phone,
+      email: c.email,
+      subject: c.subject,
+      message: c.message,
+      createdAt: c.createdAt.toISOString(),
+    })),
+  });
 });
 
 // ─── STUDENTS ────────────────────────────────────────────────────────────────
@@ -251,7 +332,7 @@ router.get("/students", async (_req, res) => {
   return res.json(rows.map(formatStudent));
 });
 
-router.post("/students", requireAuth(["admin"]), async (req, res) => {
+router.post("/students", requireAuth(["admin", "teacher"]), async (req, res) => {
   const { studentId, fullName, className, section, rollNo, photo, parents, fees, password } = req.body;
   if (!studentId || !fullName) {
     return res.status(400).json({ error: "studentId and fullName required" });
@@ -284,19 +365,38 @@ router.get("/students/:studentId/dashboard", requireAuth(["student"]), async (re
   if (!student) return res.status(404).json({ error: "Student not found" });
   const cls = student.className;
 
-  const [homework, results, notices, timetable, events, messages, materials] = await Promise.all([
+  const [homework, results, notices, timetable, events, messages, materials, attendanceRows] = await Promise.all([
     Homework.find({ className: cls }).sort({ createdTs: -1 }).limit(10),
-    Result.find({ className: cls }).sort({ createdTs: -1 }).limit(10),
+    Result.find({
+      className: cls,
+      $or: [{ targetRollNo: student.rollNo }, { targetRollNo: null }, { targetRollNo: "" }],
+    }).sort({ createdTs: -1 }).limit(10),
     Notice.find().sort({ createdTs: -1 }).limit(10),
     TimetableRow.find({ className: cls }),
     Event.find().sort({ createdTs: -1 }).limit(10),
     Message.find({ className: cls }).sort({ sentTs: -1 }).limit(10),
     StudyMaterial.find({ className: cls }).sort({ updatedTs: -1 }).limit(10),
+    AttendanceRecord.find().sort({ updatedAt: -1 }).limit(100),
   ]);
+
+  const latestAttendanceRecord = attendanceRows.find((record) => {
+    const entries = (record.entries as Array<{ studentId: string; status: string; remark?: string }>) ?? [];
+    return entries.some((entry) => entry.studentId === student.studentId);
+  });
+
+  const attendance = latestAttendanceRecord
+    ? formatAttendanceSummary({
+      className: latestAttendanceRecord.className,
+      date: latestAttendanceRecord.date,
+      teacherName: latestAttendanceRecord.teacherName,
+      updatedAt: latestAttendanceRecord.updatedAt,
+      entries: (latestAttendanceRecord.entries as Array<{ studentId: string; studentName?: string; status: string; remark?: string }>) ?? [],
+    }, student.studentId)
+    : null;
 
   return res.json({
     student: formatStudent(student),
-    attendance: null,
+    attendance,
     homework: homework.map((h) => ({
       subject: h.subject,
       title: h.title,
@@ -341,6 +441,133 @@ router.get("/students/:studentId/dashboard", requireAuth(["student"]), async (re
       type: m.resourceType,
       fileName: m.fileName ?? "",
       videoUrl: m.videoUrl ?? "",
+    })),
+  });
+});
+
+router.get("/teachers/:teacherId/dashboard", requireAuth(["teacher"]), async (req: Request, res) => {
+  const { teacherId } = req.params;
+  if (req.session!.id !== teacherId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const teacher = await Teacher.findOne({ teacherId });
+  if (!teacher) return res.status(404).json({ error: "Teacher not found" });
+
+  const assignedClasses = teacher.assignedClasses ?? [];
+  const classNames = assignedClasses.map((item) => item.split("|")[0].trim()).filter(Boolean);
+  const uniqueClassNames = [...new Set(classNames)];
+
+  const [students, homeworks, results, notices, messages, materials, events, timetableRows, attendanceRows] = await Promise.all([
+    Student.find(),
+    Homework.find({ className: { $in: uniqueClassNames } }).sort({ createdTs: -1 }).limit(20),
+    Result.find({ className: { $in: uniqueClassNames } }).sort({ createdTs: -1 }).limit(20),
+    Notice.find({
+      $or: [
+        { className: { $in: uniqueClassNames } },
+        { className: "" },
+        { audience: "all" },
+      ],
+    }).sort({ createdTs: -1 }).limit(20),
+    Message.find({ className: { $in: uniqueClassNames } }).sort({ sentTs: -1 }).limit(20),
+    StudyMaterial.find({ className: { $in: uniqueClassNames } }).sort({ updatedTs: -1 }).limit(20),
+    Event.find({
+      $or: [
+        { className: { $in: uniqueClassNames } },
+        { className: "" },
+      ],
+    }).sort({ createdTs: -1 }).limit(20),
+    TimetableRow.find({ className: { $in: uniqueClassNames } }).sort({ updatedTs: -1 }),
+    AttendanceRecord.find({ className: { $in: uniqueClassNames } }).sort({ updatedAt: -1 }).limit(20),
+  ]);
+
+  const roster = students
+    .filter((student) => assignedClasses.some((assignment) => {
+      const [className, section] = assignment.split("|").map((part) => part.trim());
+      return matchesStudentClass(student, className, section);
+    }))
+    .map(formatStudent);
+
+  return res.json({
+    teacher: formatTeacher(teacher),
+    assignedClasses,
+    students: roster,
+    homework: homeworks.map((h) => ({
+      id: h.hwId,
+      className: h.className,
+      section: h.section,
+      subject: h.subject,
+      title: h.title,
+      description: h.description,
+      dueDate: h.dueDate,
+      fileName: h.fileName,
+      teacherName: h.teacherName,
+      createdAt: h.createdAt,
+    })),
+    results: results.map((r) => ({
+      id: r.resultId,
+      className: r.className,
+      section: r.section,
+      subject: r.subject,
+      examType: r.examType,
+      title: r.title,
+      fileName: r.fileName,
+      targetRollNo: r.targetRollNo,
+      teacherName: r.teacherName,
+      createdAt: r.createdAt,
+    })),
+    notices: notices.map((n) => ({
+      id: n.noticeId,
+      title: n.title,
+      description: n.description,
+      audience: n.audience,
+      className: n.className,
+      teacherName: n.teacherName,
+      createdAt: n.createdAt,
+    })),
+    messages: messages.map((m) => ({
+      id: m.messageId,
+      subject: m.subject,
+      body: m.body,
+      audience: m.audience,
+      className: m.className,
+      studentId: m.studentId,
+      studentName: m.studentName,
+      teacherName: m.teacherName,
+      sentAt: m.sentAt,
+    })),
+    materials: materials.map((m) => ({
+      id: m.materialId,
+      title: m.title,
+      className: m.className,
+      fileName: m.fileName,
+      videoUrl: m.videoUrl,
+      resourceType: m.resourceType,
+      updatedAt: m.updatedAt,
+    })),
+    events: events.map((e) => ({
+      id: e.eventId,
+      className: e.className,
+      title: e.title,
+      description: e.description,
+      eventDate: e.eventDate,
+      teacherName: e.teacherName,
+      createdAt: e.createdAt,
+    })),
+    timetable: timetableRows.map((t) => ({
+      id: t.rowId,
+      className: t.className,
+      period: t.period,
+      subject: t.subject,
+      time: t.time,
+      updatedAt: t.updatedAt,
+    })),
+    attendance: attendanceRows.map((record) => formatAttendanceSummary({
+      className: record.className,
+      date: record.date,
+      teacherName: record.teacherName,
+      updatedAt: record.updatedAt,
+      entries: (record.entries as Array<{ studentId: string; studentName?: string; status: string; remark?: string }>) ?? [],
     })),
   });
 });

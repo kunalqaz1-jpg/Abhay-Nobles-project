@@ -1,27 +1,12 @@
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
 
-const DEMO_ADMIN = {
-  username: "admin",
-  password: "admin123",
-  session: {
-    id: "demo-admin",
-    username: "admin",
-  },
-};
-
 export default function AdminLogin() {
   const [, setLocation] = useLocation();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  function openDemoDashboard() {
-    sessionStorage.setItem("abhay_admin_session", JSON.stringify(DEMO_ADMIN.session));
-    sessionStorage.setItem("abhay_admin_token", "demo-admin-token");
-    setLocation("/admin/dashboard");
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,10 +24,6 @@ export default function AdminLogin() {
       if (data.token) sessionStorage.setItem("abhay_admin_token", data.token);
       setLocation("/admin/dashboard");
     } catch {
-      if (username.trim().toLowerCase() === DEMO_ADMIN.username && password === DEMO_ADMIN.password) {
-        openDemoDashboard();
-        return;
-      }
       setError("Invalid credentials. Use your admin username and password.");
     } finally {
       setLoading(false);
@@ -97,7 +78,7 @@ export default function AdminLogin() {
             </div>
             <button type="submit" className="erp-btn" disabled={loading}>{loading ? "Signing in…" : "Login"}</button>
           </form>
-          <p className="erp-hint">Demo: <strong>admin</strong> / <strong>admin123</strong></p>
+          <p className="erp-hint">Use your admin username and password to sign in.</p>
           <div className="erp-footer">
             <Link href="/teacher/login">Switch to Teacher Portal →</Link>
           </div>
