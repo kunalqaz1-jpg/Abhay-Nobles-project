@@ -156,7 +156,18 @@ export default function TeacherDashboardClient() {
   });
 
   const assignedClasses = useMemo(
-    () => [...new Set((dashboardData?.teacher?.assignedClasses ?? []).map((value) => value.split("|")[0].trim()).filter(Boolean))],
+    () =>
+      [...new Set((dashboardData?.teacher?.assignedClasses ?? [])
+        .map((value) => {
+          const raw = String(value || "").trim();
+          if (!raw) return "";
+          if (raw.includes("|")) {
+            const [className = "", section = ""] = raw.split("|").map((part) => part.trim());
+            return section ? `${className}-${section}` : className;
+          }
+          return raw;
+        })
+        .filter(Boolean))],
     [dashboardData?.teacher?.assignedClasses],
   );
   const students = dashboardData?.students ?? [];
@@ -507,7 +518,13 @@ export default function TeacherDashboardClient() {
               </section>
             </>
           ) : (
-            <TeacherDemoView nav={activeNav} toast={showToast} />
+            <TeacherDemoView
+              nav={activeNav}
+              toast={showToast}
+              assignedClasses={assignedClasses}
+              students={students}
+              teacherSubject={dashboardData?.teacher?.subject ?? session?.subject}
+            />
           )}
         </div>
       </div>

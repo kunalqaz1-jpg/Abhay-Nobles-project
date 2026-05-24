@@ -35,7 +35,7 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
     let message = `Request failed with status ${response.status}`;
     try {
       const body = await response.json();
-      if (body?.message) message = body.message;
+      if (body?.error || body?.message) message = body.error || body.message;
     } catch {
       // ignore parse errors and use default message
     }

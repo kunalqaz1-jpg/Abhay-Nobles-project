@@ -49,11 +49,27 @@ export type TeacherNavKey =
 
 type ToastFn = (message: string) => void;
 
-export function TeacherDemoView({ nav, toast }: { nav: TeacherNavKey; toast: ToastFn }) {
+type TeacherDemoViewProps = {
+  nav: TeacherNavKey;
+  toast: ToastFn;
+  assignedClasses?: string[];
+  students?: Array<{ className: string }>;
+  teacherSubject?: string;
+};
+
+export function TeacherDemoView({ nav, toast, assignedClasses = [], students = [], teacherSubject }: TeacherDemoViewProps) {
   if (nav === "dashboard") return null;
 
   switch (nav) {
-    case "my-classes":
+    case "my-classes": {
+      const studentClasses = [...new Set(students.map((student) => student.className).filter(Boolean))];
+      const classRows = ((assignedClasses.length ? assignedClasses : studentClasses) as string[])
+        .map((className) => ({
+          className,
+          subject: teacherSubject || getTeacherSession()?.subject || "Subject",
+          studentCount: students.filter((student) => student.className === className).length,
+        }));
+
       return (
         <DemoPage title="My classes" crumb="Teacher · My Classes">
           <Toolbar primary="Add note" secondary="Export roster" toast={toast} />
@@ -67,29 +83,29 @@ export function TeacherDemoView({ nav, toast }: { nav: TeacherNavKey; toast: Toa
                 </tr>
               </thead>
               <tbody>
-                {[
-                  ["X - A", "Mathematics", "32"],
-                  ["IX - B", "Mathematics", "40"],
-                  ["VIII - A", "Mathematics", "36"],
-                  ["XI - Sci", "Mathematics", "28"],
-                ].map((r) => (
-                  <tr key={r[0]}>
-                    <td>{r[0]}</td>
-                    <td>{r[1]}</td>
-                    <td>{r[2]}</td>
+                {classRows.length ? classRows.map((row) => (
+                  <tr key={row.className}>
+                    <td>{row.className}</td>
+                    <td>{row.subject}</td>
+                    <td>{row.studentCount}</td>
                   </tr>
-                ))}
+                )) : (
+                  <tr>
+                    <td colSpan={3} className="td-muted">No classes have been assigned yet.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
         </DemoPage>
       );
+    }
 
     case "attendance":
       return <TeacherAttendanceInteractive toast={toast} />;
 
     case "homework":
-      return <TeacherHomeworkInteractive toast={toast} />;
+      return <TeacherHomeworkInteractive toast={toast} assignedClasses={assignedClasses} />;
 
     case "fees":
       return <TeacherFeesInteractive toast={toast} />;
@@ -98,7 +114,7 @@ export function TeacherDemoView({ nav, toast }: { nav: TeacherNavKey; toast: Toa
       return <TeacherResultsInteractive toast={toast} />;
 
     case "students":
-      return <TeacherStudentsInteractive toast={toast} />;
+      return <TeacherStudentsInteractive toast={toast} assignedClasses={assignedClasses} />;
 
     case "timetable":
       return <TeacherTimetableInteractive toast={toast} />;
@@ -229,6 +245,25 @@ type TeacherFeeRecord = {
 };
 
 const DEFAULT_CLASS_OPTIONS = ["X-A", "IX-B", "VIII-A", "XI-Sci"];
+
+function normalizeAssignedClasses(assignedClasses: string[] = []) {
+  const seen = new Set<string>();
+  return assignedClasses
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .map((value) => {
+      if (value.includes("|")) {
+        const [className = "", section = ""] = value.split("|").map((part) => part.trim());
+        return section ? `${className}-${section}` : className;
+      }
+      return value;
+    })
+    .filter((value) => {
+      if (seen.has(value)) return false;
+      seen.add(value);
+      return true;
+    });
+}
 
 function getTeacherSession() {
   if (typeof window === "undefined") return null;
@@ -1492,9 +1527,15 @@ function TeacherAttendanceInteractive({ toast }: { toast: ToastFn }) {
   );
 }
 
-function TeacherHomeworkInteractive({ toast }: { toast: ToastFn }) {
+function TeacherHomeworkInteractive({
+  toast,
+  assignedClasses = [],
+}: {
+  toast: ToastFn;
+  assignedClasses?: string[];
+}) {
   const [studentDirectory, setStudentDirectory] = useState<StudentDirectoryRecord[]>(FALLBACK_STUDENTS);
-  const classOptions = mergeClassOptions(studentDirectory);
+  const classOptions = mergeClassOptions(studentDirectory, normalizeAssignedClasses(assignedClasses));
   const [selectedClassName, setSelectedClassName] = useState(classOptions[0] ?? DEFAULT_CLASS_OPTIONS[0]);
   const [subject, setSubject] = useState("Mathematics");
   const [title, setTitle] = useState("Exercise 5.2");
@@ -1737,21 +1778,36 @@ function TeacherHomeworkInteractive({ toast }: { toast: ToastFn }) {
                   return;
                 }
                 setStatusRecords((prev) =>
-                  prev.map((item) =>
-                    item.className === finalClass && item.rollNo === selectedStudentRollNo
-                      ? {
-                          ...item,
-                          status: selectedStatus,
-                          updatedAt: new Date().toLocaleString("en-IN", {
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          }),
-                        }
-                      : item,
-                  ),
+                  {
+                    const timestamp = new Date().toLocaleString("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+                    const existingIndex = prev.findIndex(
+                      (item) => item.className === finalClass && item.rollNo === selectedStudentRollNo,
+                    );
+                    if (existingIndex >= 0) {
+                      return prev.map((item, index) =>
+                        index === existingIndex
+                          ? { ...item, status: selectedStatus, updatedAt: timestamp }
+                          : item,
+                      );
+                    }
+                    const rosterStudent = studentsForClass.find((student) => student.rollNo === selectedStudentRollNo);
+                    return [
+                      ...prev,
+                      {
+                        className: finalClass,
+                        student: rosterStudent?.fullName ?? "Student",
+                        rollNo: selectedStudentRollNo,
+                        status: selectedStatus,
+                        updatedAt: timestamp,
+                      },
+                    ];
+                  },
                 );
                 const studentName = visibleStudents.find((item) => item.rollNo === selectedStudentRollNo)?.student ?? "Student";
                 toast(`Homework status updated for ${studentName}`);
@@ -1806,8 +1862,15 @@ type TeacherStudent = {
 
 const ALLOTTED_CLASSES = DEFAULT_CLASS_OPTIONS;
 
-function TeacherStudentsInteractive({ toast }: { toast: ToastFn }) {
-  const [selectedClass, setSelectedClass] = useState(DEFAULT_CLASS_OPTIONS[0]);
+function TeacherStudentsInteractive({
+  toast,
+  assignedClasses = [],
+}: {
+  toast: ToastFn;
+  assignedClasses?: string[];
+}) {
+  const normalizedAssignedClasses = normalizeAssignedClasses(assignedClasses);
+  const [selectedClass, setSelectedClass] = useState(normalizedAssignedClasses[0] ?? DEFAULT_CLASS_OPTIONS[0]);
   const [students, setStudents] = useState<TeacherStudent[]>([]);
 
   const [mode, setMode] = useState<"add" | "edit">("add");
@@ -1816,7 +1879,7 @@ function TeacherStudentsInteractive({ toast }: { toast: ToastFn }) {
     studentId: "",
     password: "1234",
     name: "",
-    className: "X-A",
+    className: normalizedAssignedClasses[0] ?? "X-A",
     rollNo: "",
     gender: "Male",
     parentName: "",
@@ -1840,7 +1903,7 @@ function TeacherStudentsInteractive({ toast }: { toast: ToastFn }) {
         history: [],
       },
     })),
-    [selectedClass, form.className],
+    [...normalizedAssignedClasses, selectedClass, form.className],
   );
 
   useEffect(() => {

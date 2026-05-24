@@ -17,6 +17,7 @@ type JoinedTeacher = {
   joinDate: string;
   phone: string;
   password: string;
+  assignedClassesText: string;
 };
 
 type EmployeeRecord = {
@@ -118,6 +119,7 @@ const initialJoinedTeachers: JoinedTeacher[] = [
     joinDate: "06 May 2026",
     phone: "+91 98765 12001",
     password: "teacher123",
+    assignedClassesText: "XI-B, XII-A",
   },
   {
     id: "JT-102",
@@ -127,6 +129,7 @@ const initialJoinedTeachers: JoinedTeacher[] = [
     joinDate: "08 May 2026",
     phone: "+91 98765 12002",
     password: "teacher123",
+    assignedClassesText: "IX-B, X-A",
   },
 ];
 
@@ -593,6 +596,7 @@ function TeachersInteractive({ toast }: { toast: ToastFn }) {
               joinDate: teacher.joinDate,
               phone: teacher.phone,
               password: "",
+              assignedClassesText: (teacher.assignedClasses ?? []).join(", "),
             })),
           );
         }
@@ -625,7 +629,16 @@ function TeachersInteractive({ toast }: { toast: ToastFn }) {
     const nextId = `TCH-${joinedTeachers.length + 3001}`;
     setJoinedTeachers((current) => [
       ...current,
-      { id: nextId, name: "", subject: "", qualification: "", joinDate: "", phone: "", password: "teacher123" },
+      {
+        id: nextId,
+        name: "",
+        subject: "",
+        qualification: "",
+        joinDate: "",
+        phone: "",
+        password: "teacher123",
+        assignedClassesText: "",
+      },
     ]);
     setRowDetail(`Added new teacher card ${nextId}`);
     toast("New teacher card added");
@@ -654,7 +667,10 @@ function TeachersInteractive({ toast }: { toast: ToastFn }) {
               qualification: teacher.qualification,
               joinDate: teacher.joinDate,
               phone: teacher.phone,
-              assignedClasses: [],
+              assignedClasses: teacher.assignedClassesText
+                .split(",")
+                .map((value) => value.trim())
+                .filter(Boolean),
               password: teacher.password.trim() || undefined,
             }),
           ),
@@ -745,6 +761,14 @@ function TeachersInteractive({ toast }: { toast: ToastFn }) {
                     value={teacher.password}
                     onChange={(e) => updateJoinedTeacher(teacher.id, "password", e.target.value)}
                     placeholder="Required for teacher login"
+                  />
+                </label>
+                <label className="ap-staff-field">
+                  <span>Assigned Classes</span>
+                  <input
+                    value={teacher.assignedClassesText}
+                    onChange={(e) => updateJoinedTeacher(teacher.id, "assignedClassesText", e.target.value)}
+                    placeholder="Example: X-A, X-B, XI-Sci"
                   />
                 </label>
               </div>

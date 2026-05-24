@@ -167,10 +167,21 @@ function matchesStudentClass(student: IStudent, className?: string, section?: st
   return student.section === section;
 }
 
+function parseAssignedClass(assignment: string) {
+  const raw = String(assignment || "").trim();
+  if (!raw) return { className: "", section: "" };
+  if (raw.includes("|")) {
+    const [className = "", section = ""] = raw.split("|").map((part) => part.trim());
+    return { className: section ? `${className}-${section}` : className, section };
+  }
+  const [className = "", section = ""] = raw.split("-").map((part) => part.trim());
+  return { className: raw, section: raw.includes("-") ? section : "" };
+}
+
 function teacherCanManageStudent(teacher: ITeacher, student: IStudent) {
   const assignedClasses = teacher.assignedClasses ?? [];
   return assignedClasses.some((assignment) => {
-    const [className, section] = assignment.split("|").map((part) => part.trim());
+    const { className, section } = parseAssignedClass(assignment);
     return matchesStudentClass(student, className, section);
   });
 }
@@ -511,7 +522,7 @@ router.get("/teachers/:teacherId/dashboard", requireAuth(["teacher"]), async (re
   if (!teacher) return res.status(404).json({ error: "Teacher not found" });
 
   const assignedClasses = teacher.assignedClasses ?? [];
-  const classNames = assignedClasses.map((item) => item.split("|")[0].trim()).filter(Boolean);
+  const classNames = assignedClasses.map((item) => parseAssignedClass(item).className).filter(Boolean);
   const uniqueClassNames = [...new Set(classNames)];
 
   const [students, homeworks, results, notices, messages, materials, events, timetableRows, attendanceRows] = await Promise.all([
@@ -539,7 +550,7 @@ router.get("/teachers/:teacherId/dashboard", requireAuth(["teacher"]), async (re
 
   const roster = students
     .filter((student) => assignedClasses.some((assignment) => {
-      const [className, section] = assignment.split("|").map((part) => part.trim());
+      const { className, section } = parseAssignedClass(assignment);
       return matchesStudentClass(student, className, section);
     }))
     .map(formatStudent);
@@ -662,10 +673,15 @@ router.post("/teachers", requireAuth(["admin"]), async (req, res) => {
   if (!teacherId || !name) {
     return res.status(400).json({ error: "teacherId and name required" });
   }
+  const normalizedAssignedClasses = Array.isArray(assignedClasses)
+    ? assignedClasses
+        .map((value) => parseAssignedClass(String(value || "")).className)
+        .filter(Boolean)
+    : [];
 
   const existing = await Teacher.findOne({ teacherId });
   if (existing) {
-    const updates: Record<string, unknown> = { name, subject, qualification, joinDate, phone, assignedClasses: assignedClasses ?? [] };
+    const updates: Record<string, unknown> = { name, subject, qualification, joinDate, phone, assignedClasses: normalizedAssignedClasses };
     if (password) updates.passwordHash = await bcryptjs.hash(password, 10);
     const updated = await Teacher.findOneAndUpdate({ teacherId }, updates, { new: true });
     return res.json(formatTeacher(updated!));
@@ -674,7 +690,7 @@ router.post("/teachers", requireAuth(["admin"]), async (req, res) => {
   const inserted = await Teacher.create({
     teacherId, name, subject, qualification, joinDate, phone,
     passwordHash: password ? await bcryptjs.hash(password, 10) : "",
-    assignedClasses: assignedClasses ?? [],
+    assignedClasses: normalizedAssignedClasses,
   });
   return res.json(formatTeacher(inserted));
 });
@@ -750,19 +766,51 @@ router.get("/attendance/student/:studentId/latest", async (req, res) => {
 
 router.post("/homework", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { id, className, section, subject, title, description, dueDate, fileName, fileData, fileMimeType, teacherName, createdAt } = req.body;
+  const homeworkId = String(id || randomUUID());
+  const normalizedClassName = String(className || "").trim();
+  const normalizedSection = String(section || "").trim() || (normalizedClassName.split("-")[1] ?? "");
 
-  const existing = await Homework.findOne({ hwId: id });
+  if (!normalizedClassName || !subject || !title || !dueDate || !teacherName) {
+    return res.status(400).json({ error: "className, subject, title, dueDate, and teacherName are required" });
+  }
+
+  const existing = await Homework.findOne({ hwId: homeworkId });
   if (existing) {
     const updated = await Homework.findOneAndUpdate(
-      { hwId: id },
-      { className, section, subject, title, description, dueDate, fileName, fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", teacherName, createdAt },
+      { hwId: homeworkId },
+      {
+        className: normalizedClassName,
+        section: normalizedSection,
+        subject,
+        title,
+        description,
+        dueDate,
+        fileName,
+        fileData: fileData ?? "",
+        fileMimeType: fileMimeType ?? "",
+        teacherName,
+        createdAt: createdAt ?? new Date().toISOString(),
+      },
       { new: true }
     );
     const h = updated!;
     return res.json({ id: h.hwId, className: h.className, section: h.section, subject: h.subject, title: h.title, description: h.description, dueDate: h.dueDate, fileName: h.fileName, fileData: h.fileData ?? "", fileMimeType: h.fileMimeType ?? "", teacherName: h.teacherName, createdAt: h.createdAt });
   }
 
-  const inserted = await Homework.create({ hwId: id, className, section, subject, title, description, dueDate, fileName, fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", teacherName, createdAt });
+  const inserted = await Homework.create({
+    hwId: homeworkId,
+    className: normalizedClassName,
+    section: normalizedSection,
+    subject,
+    title,
+    description,
+    dueDate,
+    fileName,
+    fileData: fileData ?? "",
+    fileMimeType: fileMimeType ?? "",
+    teacherName,
+    createdAt: createdAt ?? new Date().toISOString(),
+  });
   return res.json({ id: inserted.hwId, className: inserted.className, section: inserted.section, subject: inserted.subject, title: inserted.title, description: inserted.description, dueDate: inserted.dueDate, fileName: inserted.fileName, fileData: inserted.fileData ?? "", fileMimeType: inserted.fileMimeType ?? "", teacherName: inserted.teacherName, createdAt: inserted.createdAt });
 });
 
