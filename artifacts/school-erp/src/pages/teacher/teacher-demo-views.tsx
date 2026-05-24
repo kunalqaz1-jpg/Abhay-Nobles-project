@@ -193,6 +193,8 @@ type StudyMaterial = {
   title: string;
   className: string;
   fileName: string;
+  fileData?: string;
+  fileMimeType?: string;
   videoUrl: string;
   resourceType: string;
   updatedAt: string;
@@ -228,9 +230,40 @@ type TeacherFeeRecord = {
 
 const DEFAULT_CLASS_OPTIONS = ["X-A", "IX-B", "VIII-A", "XI-Sci"];
 
+function getTeacherSession() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem("abhay_teacher_session");
+    return raw ? (JSON.parse(raw) as { teacherId: string; name: string; subject: string }) : null;
+  } catch {
+    return null;
+  }
+}
+
+function getTeacherName() {
+  return getTeacherSession()?.name?.trim() || "Teacher";
+}
+
+async function readFileAsDataUrl(file: File): Promise<{ fileName: string; fileData: string; fileMimeType: string }> {
+  const fileData = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+
+  return {
+    fileName: file.name,
+    fileData,
+    fileMimeType: file.type || "application/octet-stream",
+  };
+}
+
 function mergeClassOptions(students: StudentDirectoryRecord[], extra: string[] = []) {
   const seen = new Set<string>();
-  const merged = [...extra, ...students.map((student) => student.className), ...DEFAULT_CLASS_OPTIONS]
+  const studentClasses = students.map((student) => student.className);
+  const fallbackClasses = studentClasses.length ? [] : DEFAULT_CLASS_OPTIONS;
+  const merged = [...extra, ...studentClasses, ...fallbackClasses]
     .map((value) => String(value || "").trim())
     .filter(Boolean)
     .filter((value) => {
@@ -311,7 +344,7 @@ function TeacherEventsInteractive({ toast }: { toast: ToastFn }) {
         title: title.trim(),
         description: description.trim(),
         eventDate,
-        teacherName: "Ms. Neha Sharma",
+        teacherName: getTeacherName(),
         createdAt: new Date().toISOString(),
       };
 
@@ -434,7 +467,7 @@ function TeacherNoticesInteractive({ toast }: { toast: ToastFn }) {
       description: description.trim(),
       audience,
       className: audience === "All Classes" ? "" : audience,
-      teacherName: "Ms. Neha Sharma",
+      teacherName: getTeacherName(),
       createdAt: new Date().toLocaleString("en-IN", {
         day: "numeric",
         month: "short",
@@ -585,10 +618,10 @@ function TeacherMessagesInteractive({ toast }: { toast: ToastFn }) {
       subject: subject.trim(),
       body: body.trim(),
       audience: audienceType,
-      className: audienceType === "all-students" ? "All Classes" : currentClass,
+      className: audienceType === "all-students" ? "" : currentClass,
       studentId: audienceType === "particular-student" ? selectedStudentRecord?.studentId : undefined,
       studentName: audienceType === "particular-student" ? selectedStudent : undefined,
-      teacherName: "Ms. Neha Sharma",
+      teacherName: getTeacherName(),
       sentAt: new Date().toLocaleString("en-IN", {
         day: "numeric",
         month: "short",
@@ -713,6 +746,8 @@ function TeacherStudyMaterialInteractive({ toast }: { toast: ToastFn }) {
   const [title, setTitle] = useState("");
   const [className, setClassName] = useState(classOptions[0] ?? DEFAULT_CLASS_OPTIONS[0]);
   const [fileName, setFileName] = useState("");
+  const [fileData, setFileData] = useState("");
+  const [fileMimeType, setFileMimeType] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
 
   const resetForm = () => {
@@ -720,6 +755,8 @@ function TeacherStudyMaterialInteractive({ toast }: { toast: ToastFn }) {
     setTitle("");
     setClassName(classOptions[0] ?? DEFAULT_CLASS_OPTIONS[0]);
     setFileName("");
+    setFileData("");
+    setFileMimeType("");
     setVideoUrl("");
   };
 
@@ -756,6 +793,8 @@ function TeacherStudyMaterialInteractive({ toast }: { toast: ToastFn }) {
       title: title.trim(),
       className,
       fileName: fileName.trim(),
+      fileData,
+      fileMimeType,
       videoUrl: videoUrl.trim(),
       resourceType,
       updatedAt: new Date().toLocaleString("en-IN", {
@@ -799,7 +838,23 @@ function TeacherStudyMaterialInteractive({ toast }: { toast: ToastFn }) {
           </label>
           <label className="td-field">
             <span>Document / PDF / Image</span>
-            <input type="file" accept=".pdf,image/*,.doc,.docx" className="td-select td-input-full" onChange={(e) => setFileName(e.target.files?.[0]?.name ?? fileName)} />
+            <input
+              type="file"
+              accept=".pdf,image/*,.doc,.docx"
+              className="td-select td-input-full"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  const nextFile = await readFileAsDataUrl(file);
+                  setFileName(nextFile.fileName);
+                  setFileData(nextFile.fileData);
+                  setFileMimeType(nextFile.fileMimeType);
+                } catch (error) {
+                  toast(error instanceof Error ? error.message : "Failed to read file");
+                }
+              }}
+            />
             {fileName ? <small className="td-muted">Selected: {fileName}</small> : null}
           </label>
           <label className="td-field">
@@ -849,6 +904,8 @@ function TeacherStudyMaterialInteractive({ toast }: { toast: ToastFn }) {
                       setTitle(item.title);
                       setClassName(item.className);
                       setFileName(item.fileName);
+                      setFileData(item.fileData ?? "");
+                      setFileMimeType(item.fileMimeType ?? "");
                       setVideoUrl(item.videoUrl);
                       toast("Editing resource: " + item.title);
                     }}
@@ -1080,16 +1137,17 @@ function TeacherFeesInteractive({ toast }: { toast: ToastFn }) {
 }
 
 function TeacherSettingsInteractive({ toast }: { toast: ToastFn }) {
+  const session = getTeacherSession();
   const [profile, setProfile] = useState<TeacherProfile>({
-    profilePhoto: "neha-sharma-profile.jpg",
-    fullName: "Ms. Neha Sharma",
+    profilePhoto: "teacher-profile.jpg",
+    fullName: session?.name ?? "Teacher",
     qualification: "M.Sc. Mathematics, B.Ed.",
-    subject: "Mathematics",
-    assignedClasses: ["X-A", "IX-B", "VIII-A"],
-    email: "neha.sharma@abhaynobles.edu.in",
+    subject: session?.subject ?? "Mathematics",
+    assignedClasses: DEFAULT_CLASS_OPTIONS,
+    email: `${(session?.name ?? "teacher").toLowerCase().replace(/\s+/g, ".")}@abhaynobles.edu.in`,
     phone: "9876543210",
     bio: "Passionate mathematics teacher focused on strong concepts and student confidence.",
-    teacherId: "TCH-2045",
+    teacherId: session?.teacherId ?? "TCH-0000",
     joiningDate: "2019-07-01",
     experienceYears: "7",
   });
@@ -1183,40 +1241,7 @@ type ClassRoster = {
   students: { studentId: string; studentName: string; rollNo: string }[];
 };
 
-const FALLBACK_STUDENTS: StudentDirectoryRecord[] = [
-  {
-    studentId: "AN2024-0842",
-    fullName: "Aarav Sharma",
-    className: "X-A",
-    section: "A",
-    rollNo: "14",
-    photo: "./demo-student-profile.png",
-    parents: [],
-    fees: {
-      currentTermStatus: "Paid",
-      currentTermNote: "",
-      nextDueAmount: "12,400",
-      nextDueLabel: "July 2026",
-      history: [],
-    },
-  },
-  {
-    studentId: "AN2024-0907",
-    fullName: "Ishita Meena",
-    className: "IX-B",
-    section: "B",
-    rollNo: "07",
-    photo: "./demo-student-profile.png",
-    parents: [],
-    fees: {
-      currentTermStatus: "Pending",
-      currentTermNote: "",
-      nextDueAmount: "12,400",
-      nextDueLabel: "May 2026",
-      history: [],
-    },
-  },
-];
+const FALLBACK_STUDENTS: StudentDirectoryRecord[] = [];
 
 function buildClassRosters(students: StudentDirectoryRecord[]): ClassRoster[] {
   const grouped = new Map<string, ClassRoster["students"]>();
@@ -1450,7 +1475,7 @@ function TeacherAttendanceInteractive({ toast }: { toast: ToastFn }) {
               await saveClassAttendance({
               className: currentSelectedClass,
               date: selectedDate,
-              teacherName: "Ms. Neha Sharma",
+              teacherName: getTeacherName(),
               updatedAt: new Date().toISOString(),
               entries,
               });
@@ -1475,21 +1500,10 @@ function TeacherHomeworkInteractive({ toast }: { toast: ToastFn }) {
   const [title, setTitle] = useState("Exercise 5.2");
   const [description, setDescription] = useState("Complete all questions from exercise 5.2.");
   const [dueDate, setDueDate] = useState(new Date().toISOString().slice(0, 10));
-  const [fileName, setFileName] = useState("homework-worksheet.pdf");
-  const [statusRecords, setStatusRecords] = useState([
-    { className: "X-A", student: "Aarav Sharma", rollNo: "14", status: "Submitted", updatedAt: "10 May 2026 · 08:40 AM" },
-    { className: "X-A", student: "Riya Singh", rollNo: "15", status: "Pending", updatedAt: "Not submitted yet" },
-    { className: "X-A", student: "Dev Mehta", rollNo: "16", status: "Reviewed", updatedAt: "9 May 2026 · 05:15 PM" },
-    { className: "X-A", student: "Pooja Verma", rollNo: "17", status: "Late Submission", updatedAt: "10 May 2026 · 10:05 AM" },
-    { className: "IX-B", student: "Ishita Meena", rollNo: "07", status: "Submitted", updatedAt: "10 May 2026 · 07:55 AM" },
-    { className: "IX-B", student: "Rahul Jain", rollNo: "08", status: "Pending", updatedAt: "Not submitted yet" },
-    { className: "IX-B", student: "Neha Saini", rollNo: "09", status: "Reviewed", updatedAt: "9 May 2026 · 06:10 PM" },
-    { className: "IX-B", student: "Kunal Raj", rollNo: "10", status: "Submitted", updatedAt: "10 May 2026 · 09:12 AM" },
-    { className: "VIII-A", student: "Student 01", rollNo: "01", status: "Submitted", updatedAt: "10 May 2026 · 08:20 AM" },
-    { className: "VIII-A", student: "Student 02", rollNo: "02", status: "Pending", updatedAt: "Not submitted yet" },
-    { className: "VIII-A", student: "Student 03", rollNo: "03", status: "Reviewed", updatedAt: "9 May 2026 · 04:50 PM" },
-    { className: "VIII-A", student: "Student 04", rollNo: "04", status: "Late Submission", updatedAt: "10 May 2026 · 11:00 AM" },
-  ]);
+  const [fileName, setFileName] = useState("");
+  const [fileData, setFileData] = useState("");
+  const [fileMimeType, setFileMimeType] = useState("");
+  const [statusRecords, setStatusRecords] = useState<Array<{ className: string; student: string; rollNo: string; status: string; updatedAt: string }>>([]);
 
   useEffect(() => {
     void getStudents()
@@ -1533,7 +1547,10 @@ function TeacherHomeworkInteractive({ toast }: { toast: ToastFn }) {
       setSelectedStudentRollNo(firstStudent.rollNo);
       setSelectedStatus(firstStudent.status);
     } else {
-      setSelectedStudentRollNo("");
+      const firstRosterStudent = studentDirectory
+        .filter((student) => student.className === nextClass)
+        .sort((a, b) => a.rollNo.localeCompare(b.rollNo, undefined, { numeric: true }))[0];
+      setSelectedStudentRollNo(firstRosterStudent?.rollNo ?? "");
       setSelectedStatus("Pending");
     }
   };
@@ -1631,7 +1648,18 @@ function TeacherHomeworkInteractive({ toast }: { toast: ToastFn }) {
             type="file"
             className="td-select"
             style={{ width: "60%" }}
-            onChange={(e) => setFileName(e.target.files?.[0]?.name ?? fileName)}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              try {
+                const nextFile = await readFileAsDataUrl(file);
+                setFileName(nextFile.fileName);
+                setFileData(nextFile.fileData);
+                setFileMimeType(nextFile.fileMimeType);
+              } catch (error) {
+                toast(error instanceof Error ? error.message : "Failed to read file");
+              }
+            }}
           />
         </div>
 
@@ -1649,7 +1677,9 @@ function TeacherHomeworkInteractive({ toast }: { toast: ToastFn }) {
               description,
               dueDate,
               fileName,
-              teacherName: "Ms. Neha Sharma",
+              fileData,
+              fileMimeType,
+              teacherName: getTeacherName(),
               createdAt: new Date().toISOString(),
               });
               toast(`Homework uploaded for ${finalClass} and synced to Student Portal`);
@@ -2306,7 +2336,9 @@ function TeacherResultsInteractive({ toast }: { toast: ToastFn }) {
   const [examType, setExamType] = useState<ExamType>("yearly");
   const [unitTestNumber, setUnitTestNumber] = useState<1 | 2 | 3>(1);
   const [title, setTitle] = useState("Yearly Exam Result 2026");
-  const [fileName, setFileName] = useState("yearly-result.pdf");
+  const [fileName, setFileName] = useState("");
+  const [fileData, setFileData] = useState("");
+  const [fileMimeType, setFileMimeType] = useState("");
   const [sendToAll, setSendToAll] = useState(true);
   const [targetRollNo, setTargetRollNo] = useState("");
   const [studentNameQuery, setStudentNameQuery] = useState("");
@@ -2504,7 +2536,18 @@ function TeacherResultsInteractive({ toast }: { toast: ToastFn }) {
             accept=".pdf,image/*"
             className="td-select"
             style={{ width: "60%" }}
-            onChange={(e) => setFileName(e.target.files?.[0]?.name ?? fileName)}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              try {
+                const nextFile = await readFileAsDataUrl(file);
+                setFileName(nextFile.fileName);
+                setFileData(nextFile.fileData);
+                setFileMimeType(nextFile.fileMimeType);
+              } catch (error) {
+                toast(error instanceof Error ? error.message : "Failed to read file");
+              }
+            }}
           />
         </div>
 
@@ -2526,8 +2569,10 @@ function TeacherResultsInteractive({ toast }: { toast: ToastFn }) {
                 unitTestNumber: examType === "unit-test" ? unitTestNumber : undefined,
                 title,
                 fileName,
+                fileData,
+                fileMimeType,
                 targetRollNo: sendToAll ? undefined : targetRollNo.trim(),
-                teacherName: "Ms. Neha Sharma",
+                teacherName: getTeacherName(),
                 createdAt: new Date().toISOString(),
               });
               toast(

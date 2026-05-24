@@ -28,6 +28,8 @@ export type StudyMaterialRecord = {
   title: string;
   className: string;
   fileName: string;
+  fileData?: string;
+  fileMimeType?: string;
   videoUrl: string;
   resourceType: string;
   teacherName?: string;

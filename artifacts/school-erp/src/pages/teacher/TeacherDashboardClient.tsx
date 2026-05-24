@@ -1,7 +1,5 @@
-
-
 import { Link } from "wouter";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SVGProps } from "react";
 import { TeacherDemoView, type TeacherNavKey } from "./teacher-demo-views";
 import "./teacher-dashboard.css";
@@ -10,9 +8,22 @@ function getTeacherSession() {
   try {
     const s = sessionStorage.getItem("abhay_teacher_session");
     if (s) return JSON.parse(s) as { teacherId: string; name: string; subject: string };
-  } catch { /* ignore */ }
+  } catch {
+    // ignore
+  }
   return null;
 }
+
+type TeacherDashboardData = {
+  teacher?: { teacherId?: string; name?: string; subject?: string; assignedClasses?: string[] };
+  students?: Array<{ className: string; fullName?: string; rollNo?: string }>;
+  homework?: Array<{ id?: string; className: string; title?: string; dueDate?: string }>;
+  results?: Array<{ id?: string; title?: string; className?: string; createdAt?: string }>;
+  notices?: Array<{ id?: string; title: string; createdAt?: string }>;
+  messages?: Array<{ id?: string; subject?: string; studentName?: string; className?: string; sentAt?: string }>;
+  timetable?: Array<{ id?: string; className: string; subject: string; time: string; period: string }>;
+  attendance?: Array<{ className: string; date: string; presentCount: number; totalStudents: number }>;
+};
 
 const SEARCH_INDEX: { title: string; sub: string; nav: TeacherNavKey; keywords: string }[] = [
   { title: "My Classes", sub: "Roster & periods", nav: "my-classes", keywords: "class section" },
@@ -45,13 +56,6 @@ const NAV_DEF: { id: TeacherNavKey; label: string; Icon: typeof IconLayout }[] =
   { id: "settings", label: "Settings", Icon: IconGear },
 ];
 
-const classesTable = [
-  { cls: "X - Section A", subj: "Mathematics", students: 32, att: 94, perf: 82 },
-  { cls: "IX - Section B", subj: "Mathematics", students: 40, att: 91, perf: 79 },
-  { cls: "VIII - A", subj: "Mathematics", students: 36, att: 96, perf: 85 },
-  { cls: "XI - Science", subj: "Mathematics", students: 28, att: 89, perf: 88 },
-];
-
 export default function TeacherDashboardClient() {
   const [activeNav, setActiveNav] = useState<TeacherNavKey>("dashboard");
   const [narrow, setNarrow] = useState(false);
@@ -64,6 +68,7 @@ export default function TeacherDashboardClient() {
   const [searchQuery, setSearchQuery] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [showAllNotices, setShowAllNotices] = useState(false);
+  const [dashboardData, setDashboardData] = useState<TeacherDashboardData | null>(null);
   const session = getTeacherSession();
   const teacherName = session?.name ?? "Teacher";
 
@@ -72,7 +77,7 @@ export default function TeacherDashboardClient() {
   const profileRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  const showToast = useCallback((m: string) => setToast(m), []);
+  const showToast = useCallback((message: string) => setToast(message), []);
 
   useEffect(() => {
     if (!toast) return;
@@ -85,7 +90,7 @@ export default function TeacherDashboardClient() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setSearchOpen(true);
-        setTimeout(() => searchRef.current?.focus(), 50);
+        window.setTimeout(() => searchRef.current?.focus(), 50);
       }
       if (e.key === "Escape") {
         setSearchOpen(false);
@@ -100,7 +105,7 @@ export default function TeacherDashboardClient() {
   }, []);
 
   useEffect(() => {
-    function onMd(e: MouseEvent) {
+    function onMouseDown(e: MouseEvent) {
       const t = e.target as Node;
       if (quickRef.current?.contains(t)) return;
       if (notifyRef.current?.contains(t)) return;
@@ -109,16 +114,30 @@ export default function TeacherDashboardClient() {
       setNotifyOpen(false);
       setProfileOpen(false);
     }
-    document.addEventListener("mousedown", onMd);
-    return () => document.removeEventListener("mousedown", onMd);
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
   }, []);
 
-  const isMobile = () => typeof window !== "undefined" && window.innerWidth <= 900;
+  useEffect(() => {
+    const teacherId = session?.teacherId;
+    const token = (() => {
+      try {
+        return sessionStorage.getItem("abhay_teacher_token") ?? "";
+      } catch {
+        return "";
+      }
+    })();
+    if (!teacherId || !token) return;
 
-  const toggleSidebar = () => {
-    if (isMobile()) setMobileOpen((v) => !v);
-    else setNarrow((v) => !v);
-  };
+    fetch(`/api/teachers/${encodeURIComponent(teacherId)}/dashboard`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("Failed to load teacher dashboard"))))
+      .then((data) => setDashboardData(data as TeacherDashboardData))
+      .catch(() => {});
+  }, [session?.teacherId]);
+
+  const isMobile = () => typeof window !== "undefined" && window.innerWidth <= 900;
 
   const go = (nav: TeacherNavKey, msg?: string) => {
     setActiveNav(nav);
@@ -133,80 +152,87 @@ export default function TeacherDashboardClient() {
   const filteredSearch = SEARCH_INDEX.filter((item) => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return true;
-    return (
-      item.title.toLowerCase().includes(q) ||
-      item.sub.toLowerCase().includes(q) ||
-      item.keywords.includes(q)
-    );
+    return item.title.toLowerCase().includes(q) || item.sub.toLowerCase().includes(q) || item.keywords.includes(q);
   });
 
-  const noticesShort = [
-    { title: "Summer vacation notice", date: "8 May 2026", time: "09:00 AM" },
-    { title: "PTM briefing — Class X", date: "7 May 2026", time: "04:30 PM" },
-    { title: "Lab safety drill", date: "6 May 2026", time: "11:00 AM" },
+  const assignedClasses = useMemo(
+    () => [...new Set((dashboardData?.teacher?.assignedClasses ?? []).map((value) => value.split("|")[0].trim()).filter(Boolean))],
+    [dashboardData?.teacher?.assignedClasses],
+  );
+  const students = dashboardData?.students ?? [];
+  const homework = dashboardData?.homework ?? [];
+  const results = dashboardData?.results ?? [];
+  const notices = dashboardData?.notices ?? [];
+  const messages = dashboardData?.messages ?? [];
+  const timetable = dashboardData?.timetable ?? [];
+  const attendance = dashboardData?.attendance ?? [];
+
+  const summaryCards = [
+    { ic: "#dbeafe", c: "#1d4ed8", v: String(assignedClasses.length), l: "My Classes", sub: "Assigned sections", nav: "my-classes" as TeacherNavKey },
+    { ic: "#dcfce7", c: "#15803d", v: String(students.length), l: "Students", sub: "Real student records", nav: "students" as TeacherNavKey },
+    { ic: "#ffedd5", c: "#c2410c", v: String(timetable.length), l: "Timetable Rows", sub: "Live schedule", nav: "timetable" as TeacherNavKey },
+    { ic: "#f3e8ff", c: "#7c3aed", v: String(homework.length), l: "Homework", sub: "Uploaded items", nav: "homework" as TeacherNavKey },
+    { ic: "#fce7f3", c: "#be185d", v: String(results.length), l: "Results", sub: "Uploaded result files", nav: "results" as TeacherNavKey },
+    {
+      ic: "#e0f2fe",
+      c: "#0369a1",
+      v: `${attendance[0]?.totalStudents ? Math.round((attendance[0].presentCount / attendance[0].totalStudents) * 100) : 0}%`,
+      l: "Latest Attendance",
+      sub: "Most recent saved class",
+      nav: "attendance" as TeacherNavKey,
+    },
   ];
-  const noticesList = showAllNotices ? noticesShort : noticesShort.slice(0, 2);
 
-  const pageTitle =
-    activeNav === "dashboard"
-      ? `Welcome back, ${teacherName} 👋`
-      : NAV_DEF.find((n) => n.id === activeNav)?.label ?? "Dashboard";
+  const noticesToShow = (showAllNotices ? notices : notices.slice(0, 3)).map((item) => ({
+    title: item.title,
+    when: item.createdAt ? new Date(item.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "Recent",
+  }));
 
-  const pageSub =
-    activeNav === "dashboard"
-      ? "You have 4 classes today. Make today a great day for your students!"
-      : `Demo · ${NAV_DEF.find((n) => n.id === activeNav)?.label ?? ""}`;
+  const messageAlerts = messages.slice(0, 3).map((item) => ({
+    title: item.subject || "Message",
+    detail: item.studentName ? `Student: ${item.studentName}` : item.className ? `Class: ${item.className}` : "Broadcast message",
+  }));
+
+  const homeworkAlerts = homework.slice(0, 3).map((item) => ({
+    title: item.title || "Homework",
+    detail: item.className,
+  }));
+
+  const classOverview = (assignedClasses.length ? assignedClasses : [...new Set(students.map((student) => student.className).filter(Boolean))]).map((className) => {
+    const row = attendance.find((item) => item.className === className);
+    const pct = row?.totalStudents ? Math.round((row.presentCount / row.totalStudents) * 100) : 0;
+    return {
+      className,
+      subject: dashboardData?.teacher?.subject ?? session?.subject ?? "Subject",
+      students: students.filter((student) => student.className === className).length,
+      attendance: pct,
+      lastDate: row?.date ?? "No record",
+    };
+  });
+
+  const pageTitle = activeNav === "dashboard" ? `Welcome back, ${teacherName}` : NAV_DEF.find((n) => n.id === activeNav)?.label ?? "Dashboard";
+  const pageSub = activeNav === "dashboard"
+    ? `You are connected to ${students.length} students across ${classOverview.length} classes.`
+    : NAV_DEF.find((n) => n.id === activeNav)?.label ?? "";
 
   return (
-    <div
-      className={`td-erp ${narrow ? "td-narrow" : ""} ${themeDark ? "td-dark" : ""} ${mobileOpen ? "td-mobile-open" : ""}`}
-    >
+    <div className={`td-erp ${narrow ? "td-narrow" : ""} ${themeDark ? "td-dark" : ""} ${mobileOpen ? "td-mobile-open" : ""}`}>
       {toast ? <div className="td-toast" role="status">{toast}</div> : null}
 
-      <button
-        type="button"
-        className="td-sidebar-overlay"
-        aria-label="Close menu"
-        onClick={() => setMobileOpen(false)}
-      />
+      <button type="button" className="td-sidebar-overlay" aria-label="Close menu" onClick={() => setMobileOpen(false)} />
 
       {searchOpen ? (
-        <div
-          className="td-search-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Search"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setSearchOpen(false);
-          }}
-        >
+        <div className="td-search-overlay" role="dialog" aria-modal="true" aria-label="Search" onMouseDown={(e) => e.target === e.currentTarget && setSearchOpen(false)}>
           <div className="td-search-modal" onMouseDown={(e) => e.stopPropagation()}>
-            <input
-              ref={searchRef}
-              type="search"
-              placeholder="Search students, classes, notes…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              aria-label="Command search"
-            />
-            <p className="td-search-hint">Pick a module · Esc to close · ⌘K</p>
+            <input ref={searchRef} type="search" placeholder="Search students, classes, notes..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} aria-label="Command search" />
+            <p className="td-search-hint">Pick a module. Esc to close.</p>
             <div className="td-search-res">
               {filteredSearch.map((item) => (
-                <button
-                  key={item.nav + item.title}
-                  type="button"
-                  className="td-sres-btn"
-                  onClick={() => go(item.nav, `Opened: ${item.title}`)}
-                >
+                <button key={item.nav + item.title} type="button" className="td-sres-btn" onClick={() => go(item.nav, `Opened: ${item.title}`)}>
                   {item.title}
                   <span>{item.sub}</span>
                 </button>
               ))}
-              {filteredSearch.length === 0 ? (
-                <p className="td-search-hint" style={{ padding: "1rem" }}>
-                  No matches. Try “homework”, “student”, or “timetable”.
-                </p>
-              ) : null}
             </div>
           </div>
         </div>
@@ -214,9 +240,7 @@ export default function TeacherDashboardClient() {
 
       <aside className="td-sidebar" aria-label="Teacher navigation">
         <div className="td-brand">
-          <div className="td-logo" aria-hidden>
-            SAN
-          </div>
+          <div className="td-logo" aria-hidden>SAN</div>
           <div className="td-brand-text">
             <strong>SHRI ABHAY NOBLES</strong>
             <span>Senior Secondary School</span>
@@ -249,7 +273,7 @@ export default function TeacherDashboardClient() {
               <strong>{teacherName}</strong>
               <small>
                 <span className="td-dot-on" aria-hidden />
-                Mathematics Teacher · Online
+                {session?.subject ?? "Teacher"} · Online
               </small>
             </div>
           </div>
@@ -262,89 +286,46 @@ export default function TeacherDashboardClient() {
 
       <div className="td-main">
         <header className="td-topbar">
-          <button type="button" className="td-hamburger" aria-label="Toggle sidebar" onClick={toggleSidebar}>
+          <button type="button" className="td-hamburger" aria-label="Toggle sidebar" onClick={() => isMobile() ? setMobileOpen((v) => !v) : setNarrow((v) => !v)}>
             <IconMenu />
           </button>
           <div className="td-search-wrap">
             <IconSearch className="td-search-ic" />
-            <input
-              type="search"
-              placeholder="Search students, classes, notes..."
-              aria-label="Search"
-              readOnly
-              onFocus={() => setSearchOpen(true)}
-              onClick={() => setSearchOpen(true)}
-            />
-            <kbd className="td-kbd">⌘ K</kbd>
+            <input type="search" placeholder="Search students, classes, notes..." aria-label="Search" readOnly onFocus={() => setSearchOpen(true)} onClick={() => setSearchOpen(true)} />
+            <kbd className="td-kbd">Ctrl K</kbd>
           </div>
           <div className="td-topbar-right">
             <span className="td-badge-ok">
               <span className="td-pulse" aria-hidden />
-              All Systems Operational
+              Live Data Connected
             </span>
             <span className="td-date">
               <IconCalendarSmall />
-              8 May 2026, Thursday
+              {new Date().toLocaleDateString("en-IN", { dateStyle: "medium" })}
             </span>
             <div className="td-dropdown-wrap" ref={notifyRef}>
-              <button
-                type="button"
-                className="td-icon-btn"
-                aria-label="Notifications"
-                aria-expanded={notifyOpen}
-                onClick={() => {
-                  setNotifyOpen((v) => !v);
-                  setProfileOpen(false);
-                  setQuickOpen(false);
-                }}
-              >
+              <button type="button" className="td-icon-btn" aria-label="Notifications" aria-expanded={notifyOpen} onClick={() => { setNotifyOpen((v) => !v); setProfileOpen(false); setQuickOpen(false); }}>
                 <IconBell />
-                <span className="td-notify-badge">6</span>
+                <span className="td-notify-badge">{messageAlerts.length + homeworkAlerts.length}</span>
               </button>
               {notifyOpen ? (
                 <div className="td-dropdown">
-                  <div className="td-dd-head">Notifications</div>
-                  <button type="button" className="td-dd-item" onClick={() => go("homework", "12 submissions to review (demo)")}>
-                    <strong>Homework queue</strong>
-                    <small>12 pending reviews</small>
-                  </button>
-                  <button type="button" className="td-dd-item" onClick={() => go("messages", "New parent message (demo)")}>
-                    <strong>Parent message</strong>
-                    <small>Re: doubt in Ch. 5</small>
-                  </button>
-                  <button type="button" className="td-dd-item" onClick={() => go("notices", "New notice published (demo)")}>
-                    <strong>Notice</strong>
-                    <small>Summer vacation dates</small>
-                  </button>
-                  <div className="td-dd-div" />
-                  <button type="button" className="td-dd-item" onClick={() => go("dashboard", "All read (demo)")}>
-                    <small>Mark all as read</small>
-                  </button>
+                  <div className="td-dd-head">Recent Updates</div>
+                  {[...messageAlerts, ...homeworkAlerts].slice(0, 4).map((item) => (
+                    <button key={item.title + item.detail} type="button" className="td-dd-item" onClick={() => go(item.detail.startsWith("Class") ? "messages" : "homework", item.title)}>
+                      <strong>{item.title}</strong>
+                      <small>{item.detail}</small>
+                    </button>
+                  ))}
+                  {!messageAlerts.length && !homeworkAlerts.length ? <div className="td-dd-item"><small>No recent updates yet.</small></div> : null}
                 </div>
               ) : null}
             </div>
-            <button
-              type="button"
-              className="td-theme-btn"
-              aria-label={themeDark ? "Switch to light mode" : "Switch to dark mode"}
-              onClick={() => {
-                setThemeDark((v) => !v);
-                showToast(themeDark ? "Light theme (demo)" : "Dark theme (demo)");
-              }}
-            >
+            <button type="button" className="td-theme-btn" aria-label={themeDark ? "Switch to light mode" : "Switch to dark mode"} onClick={() => setThemeDark((v) => !v)}>
               {themeDark ? <IconSun /> : <IconMoon />}
             </button>
             <div className="td-dropdown-wrap" ref={profileRef}>
-              <button
-                type="button"
-                className="td-profile-btn"
-                aria-expanded={profileOpen}
-                onClick={() => {
-                  setProfileOpen((v) => !v);
-                  setNotifyOpen(false);
-                  setQuickOpen(false);
-                }}
-              >
+              <button type="button" className="td-profile-btn" aria-expanded={profileOpen} onClick={() => { setProfileOpen((v) => !v); setNotifyOpen(false); setQuickOpen(false); }}>
                 <span className="td-profile-mini" aria-hidden />
                 <span>
                   {teacherName}
@@ -355,14 +336,11 @@ export default function TeacherDashboardClient() {
               </button>
               {profileOpen ? (
                 <div className="td-dropdown td-dropdown-wide">
-                  <button type="button" className="td-dd-item" onClick={() => showToast("Demo: My profile")}>
-                    <strong>My profile</strong>
+                  <button type="button" className="td-dd-item" onClick={() => go("settings", "Profile settings")}>
+                    <strong>Profile Settings</strong>
                   </button>
-                  <button type="button" className="td-dd-item" onClick={() => go("settings", "Settings (demo)")}>
-                    <strong>Settings</strong>
-                  </button>
-                  <button type="button" className="td-dd-item" onClick={() => showToast("Demo: Help")}>
-                    <strong>Help center</strong>
+                  <button type="button" className="td-dd-item" onClick={() => go("messages", "Messages")}>
+                    <strong>Messages</strong>
                   </button>
                   <div className="td-dd-div" />
                   <Link href="/teacher/login" className="td-dd-item" onClick={() => setProfileOpen(false)}>
@@ -381,16 +359,7 @@ export default function TeacherDashboardClient() {
               <p>{pageSub}</p>
             </div>
             <div className="td-quick-wrap" ref={quickRef}>
-              <button
-                type="button"
-                className="td-btn-quick"
-                aria-expanded={quickOpen}
-                onClick={() => {
-                  setQuickOpen((v) => !v);
-                  setNotifyOpen(false);
-                  setProfileOpen(false);
-                }}
-              >
+              <button type="button" className="td-btn-quick" aria-expanded={quickOpen} onClick={() => { setQuickOpen((v) => !v); setNotifyOpen(false); setProfileOpen(false); }}>
                 <IconBolt />
                 Quick Actions
                 <IconChevronSmall style={{ transform: quickOpen ? "rotate(270deg)" : "rotate(90deg)" }} />
@@ -398,21 +367,10 @@ export default function TeacherDashboardClient() {
               {quickOpen ? (
                 <div className="td-dropdown td-dropdown-wide td-dd-quick">
                   <div className="td-dd-head">Shortcuts</div>
-                  <button type="button" className="td-dd-item" onClick={() => go("attendance", "Mark attendance (demo)")}>
-                    Mark attendance
-                  </button>
-                  <button type="button" className="td-dd-item" onClick={() => go("homework", "Upload homework (demo)")}>
-                    Upload homework
-                  </button>
-                  <button type="button" className="td-dd-item" onClick={() => go("results", "Upload results (demo)")}>
-                    Upload results
-                  </button>
-                  <button type="button" className="td-dd-item" onClick={() => go("notices", "Send notice (demo)")}>
-                    Send notice
-                  </button>
-                  <button type="button" className="td-dd-item" onClick={() => go("timetable", "Timetable (demo)")}>
-                    View timetable
-                  </button>
+                  <button type="button" className="td-dd-item" onClick={() => go("attendance", "Mark attendance")}>Mark attendance</button>
+                  <button type="button" className="td-dd-item" onClick={() => go("homework", "Upload homework")}>Upload homework</button>
+                  <button type="button" className="td-dd-item" onClick={() => go("results", "Upload results")}>Upload results</button>
+                  <button type="button" className="td-dd-item" onClick={() => go("timetable", "Open timetable")}>Open timetable</button>
                 </div>
               ) : null}
             </div>
@@ -421,75 +379,15 @@ export default function TeacherDashboardClient() {
           {activeNav === "dashboard" ? (
             <>
               <section className="td-stat-grid" aria-label="Summary">
-                {([
-                  {
-                    ic: "#dbeafe",
-                    c: "#1d4ed8",
-                    v: "4",
-                    l: "My Classes",
-                    sub: "Classes assigned",
-                    nav: "my-classes" as TeacherNavKey,
-                  },
-                  {
-                    ic: "#dcfce7",
-                    c: "#15803d",
-                    v: "128",
-                    l: "Students",
-                    sub: "Total students",
-                    nav: "students",
-                  },
-                  {
-                    ic: "#ffedd5",
-                    c: "#c2410c",
-                    v: "4",
-                    l: "Today's Classes",
-                    sub: "Classes today",
-                    nav: "timetable",
-                  },
-                  {
-                    ic: "#f3e8ff",
-                    c: "#7c3aed",
-                    v: "92.6%",
-                    l: "Attendance Today",
-                    sub: "Average attendance",
-                    nav: "attendance",
-                  },
-                  {
-                    ic: "#fce7f3",
-                    c: "#be185d",
-                    v: "12",
-                    l: "Pending Homework",
-                    sub: "To review",
-                    nav: "homework",
-                  },
-                  {
-                    ic: "#e0f2fe",
-                    c: "#0369a1",
-                    v: "3",
-                    l: "Upcoming Exams",
-                    sub: "This month",
-                    nav: "results",
-                  },
-                ] as {
-                  ic: string;
-                  c: string;
-                  v: string;
-                  l: string;
-                  sub: string;
-                  nav: TeacherNavKey;
-                }[]).map((s) => (
+                {summaryCards.map((s) => (
                   <article key={s.l} className="td-stat-card">
                     <div className="td-stat-ic" style={{ background: s.ic, color: s.c }}>
                       <IconChartMini />
                     </div>
                     <strong>{s.v}</strong>
                     <label>{s.l}</label>
-                    <p className="td-muted" style={{ margin: "0.25rem 0 0", fontSize: "0.78rem" }}>
-                      {s.sub}
-                    </p>
-                    <button type="button" className="td-view" onClick={() => go(s.nav, `View: ${s.l}`)}>
-                      View
-                    </button>
+                    <p className="td-muted" style={{ margin: "0.25rem 0 0", fontSize: "0.78rem" }}>{s.sub}</p>
+                    <button type="button" className="td-view" onClick={() => go(s.nav, `View: ${s.l}`)}>View</button>
                   </article>
                 ))}
               </section>
@@ -497,186 +395,75 @@ export default function TeacherDashboardClient() {
               <section className="td-mid-grid">
                 <div className="td-panel">
                   <div className="td-panel-head">
-                    <h3>Today&apos;s Classes</h3>
-                    <button type="button" className="td-select" style={{ cursor: "pointer" }} onClick={() => showToast("Filter: Today (demo)")}>
-                      Today ▾
-                    </button>
+                    <h3>Today's Classes</h3>
+                    <button type="button" className="td-select" style={{ cursor: "pointer" }} onClick={() => go("timetable", "Timetable")}>Open</button>
                   </div>
                   <div className="td-timeline">
-                    {[
-                      { time: "08:00 – 09:00", cls: "Class X - Section A", sub: "Mathematics", st: "done" as const },
-                      { time: "09:05 – 10:00", cls: "Class IX - Section B", sub: "Mathematics", st: "done" as const },
-                      { time: "10:40 – 11:30", cls: "Class VIII - A", sub: "Mathematics", st: "up" as const },
-                      { time: "12:20 – 13:10", cls: "Class XI - Science", sub: "Mathematics", st: "up" as const },
-                    ].map((row) => (
-                      <div key={row.time} className="td-tl-item">
+                    {timetable.length ? timetable.slice(0, 5).map((row) => (
+                      <div key={`${row.className}-${row.period}-${row.time}`} className="td-tl-item">
                         <div className="td-tl-time">{row.time}</div>
                         <div className="td-tl-body">
-                          <strong>{row.cls}</strong>
-                          <small>{row.sub}</small>
-                          <span className={`td-badge ${row.st === "done" ? "td-badge-done" : "td-badge-up"}`}>
-                            {row.st === "done" ? "Completed" : "Upcoming"}
-                          </span>
+                          <strong>{row.className}</strong>
+                          <small>{row.subject} · Period {row.period}</small>
+                          <span className="td-badge td-badge-up">Scheduled</span>
                         </div>
                       </div>
-                    ))}
+                    )) : <p className="td-muted">No timetable rows have been saved yet.</p>}
                   </div>
-                  <div className="td-panel-head" style={{ marginTop: "1rem" }}>
-                    <h3>Student Performance</h3>
-                    <select className="td-select" defaultValue="avg" onChange={(e) => showToast(`Metric: ${e.target.value} (demo)`)}>
-                      <option value="avg">Class average</option>
-                      <option value="test">Latest test</option>
-                    </select>
-                  </div>
-                  <div className="td-bar-performance" role="img" aria-label="Bar chart Class X 88 IX 76 VIII 82 percent">
-                    {[88, 76, 82].map((h, i) => (
-                      <div key={i} className="td-bar-p" style={{ height: `${h}%` }} title={`${["X", "IX", "VIII"][i]}: ${h}%`} />
-                    ))}
-                  </div>
-                  <div className="td-bar-labels">
-                    <span>Class X</span>
-                    <span>Class IX</span>
-                    <span>Class VIII</span>
-                  </div>
-                  <p className="td-overall">Overall average: 73%</p>
                 </div>
 
                 <div className="td-panel">
                   <div className="td-panel-head">
-                    <h3>Attendance Overview</h3>
-                    <select className="td-select" defaultValue="week" onChange={(e) => showToast(`Attendance: ${e.target.value} (demo)`)}>
-                      <option value="week">This week</option>
-                      <option value="month">This month</option>
-                    </select>
-                  </div>
-                  <div className="td-chart-h" style={{ position: "relative" }}>
-                    <TeacherWeekLineChart />
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: "8%",
-                        right: "6%",
-                        background: "var(--td-card)",
-                        border: "1px solid var(--td-border)",
-                        borderRadius: 8,
-                        padding: "0.35rem 0.5rem",
-                        fontSize: "0.7rem",
-                        fontWeight: 700,
-                        boxShadow: "0 4px 12px rgba(15,23,42,0.1)",
-                      }}
-                    >
-                      92.6% · 8 May
-                    </div>
-                  </div>
-                  <div className="td-panel-head" style={{ marginTop: "0.5rem" }}>
                     <h3>Recent Notices</h3>
-                    <button
-                      type="button"
-                      className="td-select"
-                      style={{ cursor: "pointer" }}
-                      onClick={() => {
-                        setShowAllNotices((v) => {
-                          const next = !v;
-                          showToast(next ? "View all notices (demo)" : "Showing fewer notices");
-                          return next;
-                        });
-                      }}
-                    >
+                    <button type="button" className="td-select" style={{ cursor: "pointer" }} onClick={() => setShowAllNotices((v) => !v)}>
                       {showAllNotices ? "Show less" : "View all"}
                     </button>
                   </div>
                   <div>
-                    {noticesList.map((n) => (
-                      <div key={n.title} className="td-notice-item">
-                        <strong>{n.title}</strong>
-                        <small>
-                          {n.date} · {n.time}
-                        </small>
-                        <button type="button" className="td-link-btn" style={{ marginTop: "0.35rem" }} onClick={() => go("notices", `Read: ${n.title}`)}>
-                          Open
-                        </button>
+                    {noticesToShow.length ? noticesToShow.map((notice) => (
+                      <div key={notice.title + notice.when} className="td-notice-item">
+                        <strong>{notice.title}</strong>
+                        <small>{notice.when}</small>
+                        <button type="button" className="td-link-btn" style={{ marginTop: "0.35rem" }} onClick={() => go("notices", notice.title)}>Open</button>
                       </div>
-                    ))}
+                    )) : <p className="td-muted">No notices published yet.</p>}
                   </div>
                 </div>
 
                 <div className="td-panel">
                   <div className="td-panel-head">
-                    <h3>Pending Homework Review</h3>
-                    <button type="button" className="td-select" style={{ cursor: "pointer" }} onClick={() => go("homework", "Full queue (demo)")}>
-                      View all
-                    </button>
+                    <h3>Recent Homework</h3>
+                    <button type="button" className="td-select" style={{ cursor: "pointer" }} onClick={() => go("homework", "Homework")}>View all</button>
                   </div>
-                  {[
-                    { t: "Algebra problem set · X-A", due: "Due 12 May", n: "4 pending" },
-                    { t: "Geometry worksheet · IX-B", due: "Due 11 May", n: "8 pending" },
-                  ].map((h) => (
-                    <div key={h.t} className="td-hw-item">
+                  {homework.length ? homework.slice(0, 4).map((item) => (
+                    <div key={item.id ?? item.title} className="td-hw-item">
                       <div>
-                        <strong style={{ fontSize: "0.8125rem" }}>{h.t}</strong>
+                        <strong style={{ fontSize: "0.8125rem" }}>{item.title || "Homework"}</strong>
                         <small className="td-muted" style={{ display: "block", marginTop: "0.2rem" }}>
-                          {h.due}
+                          {item.className} · {item.dueDate ? `Due ${item.dueDate}` : "Due date not set"}
                         </small>
                       </div>
-                      <button type="button" className="td-btn-secondary" style={{ padding: "0.35rem 0.6rem", fontSize: "0.72rem" }} onClick={() => go("homework", `Review ${h.n}`)}>
-                        {h.n}
+                      <button type="button" className="td-btn-secondary" style={{ padding: "0.35rem 0.6rem", fontSize: "0.72rem" }} onClick={() => go("homework", item.title || "Homework")}>
+                        Open
                       </button>
                     </div>
-                  ))}
+                  )) : <p className="td-muted">No homework has been uploaded yet.</p>}
                   <h3 style={{ margin: "1rem 0 0", fontSize: "0.9375rem" }}>Quick Actions</h3>
                   <div className="td-quick-grid">
-                    <button type="button" className="td-qbtn td-q1" onClick={() => go("attendance", "Mark attendance")}>
-                      Mark Attendance
-                    </button>
-                    <button type="button" className="td-qbtn td-q2" onClick={() => go("homework", "Upload homework")}>
-                      Upload Homework
-                    </button>
-                    <button type="button" className="td-qbtn td-q3" onClick={() => go("results", "Upload results")}>
-                      Upload Results
-                    </button>
-                    <button type="button" className="td-qbtn td-q4" onClick={() => go("notices", "Send notice")}>
-                      Send Notice
-                    </button>
-                    <button type="button" className="td-qbtn td-q5" onClick={() => go("timetable", "Timetable")}>
-                      View Timetable
-                    </button>
-                    <button type="button" className="td-qbtn td-q6" onClick={() => go("messages", "Open messages")}>
-                      Open Messages
-                    </button>
+                    <button type="button" className="td-qbtn td-q1" onClick={() => go("attendance", "Mark attendance")}>Mark Attendance</button>
+                    <button type="button" className="td-qbtn td-q2" onClick={() => go("homework", "Upload homework")}>Upload Homework</button>
+                    <button type="button" className="td-qbtn td-q3" onClick={() => go("results", "Upload results")}>Upload Results</button>
+                    <button type="button" className="td-qbtn td-q4" onClick={() => go("notices", "Send notice")}>Send Notice</button>
+                    <button type="button" className="td-qbtn td-q5" onClick={() => go("timetable", "Timetable")}>View Timetable</button>
+                    <button type="button" className="td-qbtn td-q6" onClick={() => go("messages", "Open messages")}>Open Messages</button>
                   </div>
-                  <div className="td-panel-head" style={{ marginTop: "1rem" }}>
-                    <h3>Upcoming Exams</h3>
-                  </div>
-                  {[
-                    { d: "15", m: "May", t: "Unit Test — Mathematics", time: "09:00 AM" },
-                    { d: "22", m: "May", t: "Pre-board Practical", time: "10:30 AM" },
-                    { d: "28", m: "May", t: "Internal Assessment", time: "08:30 AM" },
-                  ].map((ex) => (
-                    <div key={ex.t} className="td-exam-item">
-                      <div className="td-exam-date">
-                        <strong>{ex.d}</strong>
-                        <small>{ex.m}</small>
-                      </div>
-                      <div>
-                        <strong style={{ fontSize: "0.8125rem" }}>{ex.t}</strong>
-                        <small className="td-muted" style={{ display: "block" }}>
-                          {ex.time}
-                        </small>
-                        <button type="button" className="td-link-btn" style={{ marginTop: "0.35rem" }} onClick={() => go("results", `Exam: ${ex.t}`)}>
-                          Details
-                        </button>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </section>
 
               <section className="td-bottom-table-wrap" aria-label="My classes overview">
                 <div className="td-panel-head" style={{ padding: "1rem 1rem 0" }}>
                   <h3 style={{ margin: 0 }}>My Classes Overview</h3>
-                  <button type="button" className="td-select" style={{ cursor: "pointer" }} onClick={() => showToast("Export table (demo)")}>
-                    Export
-                  </button>
+                  <button type="button" className="td-select" style={{ cursor: "pointer" }} onClick={() => go("my-classes", "My classes")}>Open</button>
                 </div>
                 <table className="td-data-table">
                   <thead>
@@ -684,41 +471,37 @@ export default function TeacherDashboardClient() {
                       <th>Class</th>
                       <th>Subject</th>
                       <th>Students</th>
-                      <th>Attendance (Today)</th>
-                      <th>Avg. Performance</th>
+                      <th>Attendance</th>
+                      <th>Last Saved</th>
                       <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {classesTable.map((r) => (
-                      <tr key={r.cls}>
-                        <td>{r.cls}</td>
-                        <td>{r.subj}</td>
-                        <td>{r.students}</td>
+                    {classOverview.length ? classOverview.map((row) => (
+                      <tr key={row.className}>
+                        <td>{row.className}</td>
+                        <td>{row.subject}</td>
+                        <td>{row.students}</td>
                         <td>
-                          {r.att}%
+                          {row.attendance}%
                           <div className="td-mini-track">
-                            <span style={{ width: `${r.att}%` }} />
+                            <span style={{ width: `${row.attendance}%` }} />
                           </div>
                         </td>
-                        <td>
-                          {r.perf}%
-                          <div className="td-mini-track">
-                            <span style={{ width: `${r.perf}%` }} />
-                          </div>
-                        </td>
+                        <td>{row.lastDate}</td>
                         <td>
                           <div className="td-action-ic">
-                            <button type="button" className="td-ic-btn" aria-label="View details" onClick={() => go("my-classes", `Details ${r.cls}`)}>
+                            <button type="button" className="td-ic-btn" aria-label="View details" onClick={() => go("my-classes", row.className)}>
                               <IconEye />
-                            </button>
-                            <button type="button" className="td-ic-btn" aria-label="Analytics" onClick={() => go("results", `Analytics ${r.cls}`)}>
-                              <IconChartMini />
                             </button>
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    )) : (
+                      <tr>
+                        <td colSpan={6} className="td-muted">No assigned classes found yet.</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </section>
@@ -732,259 +515,75 @@ export default function TeacherDashboardClient() {
   );
 }
 
-function TeacherWeekLineChart() {
-  const w = 360;
-  const h = 110;
-  const pad = 10;
-  const days = 6;
-  const vals = [0.88, 0.9, 0.87, 0.91, 0.89, 0.926];
-  const toX = (i: number) => pad + (i / (days - 1)) * (w - pad * 2);
-  const toY = (v: number) => h - pad - v * (h - pad * 2);
-  const d = vals.map((v, i) => `${i === 0 ? "M" : "L"} ${toX(i)} ${toY(v)}`).join(" ");
-  const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-  return (
-    <svg viewBox={`0 0 ${w} ${h + 22}`} width="100%" height="160" preserveAspectRatio="xMidYMid meet" style={{ position: "relative" }}>
-      {[0.25, 0.5, 0.75].map((t) => (
-        <line key={t} x1={pad} x2={w - pad} y1={toY(t)} y2={toY(t)} stroke="var(--td-border)" strokeWidth="1" />
-      ))}
-      <path
-        d={d}
-        fill="none"
-        stroke="var(--td-blue)"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {vals.map((v, i) => (
-        <circle key={i} cx={toX(i)} cy={toY(v)} r="4" fill="var(--td-card)" stroke="var(--td-blue)" strokeWidth="2" />
-      ))}
-      {labels.map((lb, i) => (
-        <text key={lb} x={toX(i) - 10} y={h + 16} fill="var(--td-muted)" fontSize="9">
-          {lb}
-        </text>
-      ))}
-    </svg>
-  );
-}
-
 function IconLayout() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <rect x="3" y="3" width="7" height="9" rx="1.5" />
-      <rect x="14" y="3" width="7" height="5" rx="1.5" />
-      <rect x="14" y="12" width="7" height="9" rx="1.5" />
-      <rect x="3" y="16" width="7" height="5" rx="1.5" />
-    </svg>
-  );
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" /></svg>;
 }
-
 function IconBookOpen() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-    </svg>
-  );
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>;
 }
-
 function IconCheck() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-      <polyline points="22 4 12 14.01 9 11.01" />
-    </svg>
-  );
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>;
 }
-
 function IconFile() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-    </svg>
-  );
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>;
 }
-
 function IconChart() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <line x1="18" y1="20" x2="18" y2="10" />
-      <line x1="12" y1="20" x2="12" y2="4" />
-      <line x1="6" y1="20" x2="6" y2="14" />
-    </svg>
-  );
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>;
 }
-
 function IconUsers() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  );
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>;
 }
-
 function IconCalendar() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-      <line x1="16" y1="2" x2="16" y2="6" />
-      <line x1="8" y1="2" x2="8" y2="6" />
-      <line x1="3" y1="10" x2="21" y2="10" />
-    </svg>
-  );
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>;
 }
-
 function IconBell() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-    </svg>
-  );
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>;
 }
-
 function IconMessage() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-    </svg>
-  );
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>;
 }
-
 function IconFolder() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-    </svg>
-  );
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>;
 }
-
 function IconGear() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-    </svg>
-  );
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3" /><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" /></svg>;
 }
-
 function IconWallet() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M3 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-      <path d="M16 12h5v4h-5a2 2 0 0 1 0-4z" />
-      <path d="M3 8l13-4" />
-    </svg>
-  );
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="M16 12h5v4h-5a2 2 0 0 1 0-4z" /><path d="M3 8l13-4" /></svg>;
 }
-
 function IconMenu() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <line x1="3" y1="6" x2="21" y2="6" />
-      <line x1="3" y1="12" x2="21" y2="12" />
-      <line x1="3" y1="18" x2="21" y2="18" />
-    </svg>
-  );
+  return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></svg>;
 }
-
 function IconSearch({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="11" cy="11" r="8" />
-      <line x1="21" y1="21" x2="16.65" y2="16.65" />
-    </svg>
-  );
+  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>;
 }
-
 function IconCalendarSmall() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <rect x="3" y="4" width="18" height="18" rx="2" />
-      <line x1="16" y1="2" x2="16" y2="6" />
-      <line x1="8" y1="2" x2="8" y2="6" />
-      <line x1="3" y1="10" x2="21" y2="10" />
-    </svg>
-  );
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>;
 }
-
 function IconEvent() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    </svg>
-  );
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>;
 }
-
 function IconLogout() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-      <polyline points="16 17 21 12 16 7" />
-      <line x1="21" y1="12" x2="9" y2="12" />
-    </svg>
-  );
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>;
 }
-
 function IconBolt() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z" />
-    </svg>
-  );
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z" /></svg>;
 }
-
 function IconChevron(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
-  );
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}><polyline points="6 9 12 15 18 9" /></svg>;
 }
-
 function IconChevronSmall(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
-  );
+  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}><polyline points="6 9 12 15 18 9" /></svg>;
 }
-
 function IconSun() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-    </svg>
-  );
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" /></svg>;
 }
-
 function IconMoon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-    </svg>
-  );
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>;
 }
-
 function IconEye() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>;
 }
-
 function IconChartMini() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <line x1="18" y1="20" x2="18" y2="10" />
-      <line x1="12" y1="20" x2="12" y2="4" />
-      <line x1="6" y1="20" x2="6" y2="14" />
-    </svg>
-  );
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>;
 }

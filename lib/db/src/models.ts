@@ -105,6 +105,8 @@ export interface IHomework extends Document {
   description: string;
   dueDate: string;
   fileName: string;
+  fileData: string;
+  fileMimeType: string;
   teacherName: string;
   createdAt: string;
 }
@@ -118,6 +120,8 @@ const HomeworkSchema = new Schema<IHomework>({
   description: { type: String, default: "" },
   dueDate: { type: String, required: true },
   fileName: { type: String, default: "" },
+  fileData: { type: String, default: "" },
+  fileMimeType: { type: String, default: "" },
   teacherName: { type: String, required: true },
   createdAt: { type: String, required: true },
 }, { timestamps: { createdAt: "createdTs", updatedAt: "updatedTs" } });
@@ -135,6 +139,8 @@ export interface IResult extends Document {
   unitTestNumber?: number | null;
   title: string;
   fileName: string;
+  fileData: string;
+  fileMimeType: string;
   targetRollNo?: string | null;
   teacherName: string;
   createdAt: string;
@@ -149,6 +155,8 @@ const ResultSchema = new Schema<IResult>({
   unitTestNumber: { type: Number, default: null },
   title: { type: String, required: true },
   fileName: { type: String, default: "" },
+  fileData: { type: String, default: "" },
+  fileMimeType: { type: String, default: "" },
   targetRollNo: { type: String, default: null },
   teacherName: { type: String, required: true },
   createdAt: { type: String, required: true },
@@ -215,6 +223,8 @@ export interface IStudyMaterial extends Document {
   title: string;
   className: string;
   fileName: string;
+  fileData: string;
+  fileMimeType: string;
   videoUrl: string;
   resourceType: string;
   teacherName: string;
@@ -226,6 +236,8 @@ const StudyMaterialSchema = new Schema<IStudyMaterial>({
   title: { type: String, required: true },
   className: { type: String, required: true },
   fileName: { type: String, default: "" },
+  fileData: { type: String, default: "" },
+  fileMimeType: { type: String, default: "" },
   videoUrl: { type: String, default: "" },
   resourceType: { type: String, required: true },
   teacherName: { type: String, default: "" },

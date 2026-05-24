@@ -35,9 +35,9 @@ const NAV = [
   { id: "messages", label: "Messages", icon: <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> },
 ];
 
-type HomeworkItem = { subject: string; title: string; description?: string; dueDate: string; status: string; fileName?: string; teacherName?: string };
-type ResultItem = { id: string; title: string; subject: string; examType: string; fileName?: string; teacherName?: string; createdAt: string };
-type MaterialItem = { title: string; type: string; fileName?: string; videoUrl?: string };
+type HomeworkItem = { subject: string; title: string; description?: string; dueDate: string; status: string; fileName?: string; fileData?: string; fileMimeType?: string; teacherName?: string };
+type ResultItem = { id: string; title: string; subject: string; examType: string; fileName?: string; fileData?: string; fileMimeType?: string; teacherName?: string; createdAt: string };
+type MaterialItem = { title: string; type: string; fileName?: string; fileData?: string; fileMimeType?: string; videoUrl?: string };
 
 type DashboardData = {
   student: {
@@ -116,9 +116,26 @@ export default function StudentPortal() {
     return `${m}:${s}`;
   }
 
-  function openFile(fileName: string, videoUrl: string) {
+  function downloadDataFile(fileName: string, fileData: string) {
+    const link = document.createElement("a");
+    link.href = fileData;
+    link.download = fileName || "download";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
+  function openFile(fileName: string, fileData: string, videoUrl: string, mode: "view" | "download" = "view") {
     if (videoUrl) { window.open(videoUrl, "_blank"); return; }
-    if (fileName) { alert(`File: ${fileName}\n\nPlease collect this file from your teacher or check the school WhatsApp group.`); return; }
+    if (fileData) {
+      if (mode === "download") {
+        downloadDataFile(fileName, fileData);
+        return;
+      }
+      window.open(fileData, "_blank");
+      return;
+    }
+    if (fileName) { alert(`File "${fileName}" is listed, but its upload data is missing.`); return; }
     alert("No file attached.");
   }
 
@@ -566,8 +583,8 @@ export default function StudentPortal() {
                           <td><span className={`sp-tag ${h.status === "Submitted" ? "ok" : h.status === "Reviewed" ? "ok" : "pending"}`}>{h.status}</span></td>
                           <td>
                             <div className="sp-file-btns">
-                              <button type="button" className="sp-file-btn view" onClick={() => openFile(h.fileName || "", "")}>View</button>
-                              <button type="button" className="sp-file-btn dl" onClick={() => openFile(h.fileName || "", "")}>Download</button>
+                              <button type="button" className="sp-file-btn view" onClick={() => openFile(h.fileName || "", h.fileData || "", "", "view")}>View</button>
+                              <button type="button" className="sp-file-btn dl" onClick={() => openFile(h.fileName || "", h.fileData || "", "", "download")}>Download</button>
                             </div>
                           </td>
                         </tr>
@@ -599,8 +616,8 @@ export default function StudentPortal() {
                           </small>
                         </div>
                         <div className="sp-file-btns">
-                          <button type="button" className="sp-file-btn view" onClick={() => openFile(r.fileName || "", "")}>View</button>
-                          <button type="button" className="sp-file-btn dl" onClick={() => openFile(r.fileName || "", "")}>Download</button>
+                          <button type="button" className="sp-file-btn view" onClick={() => openFile(r.fileName || "", r.fileData || "", "", "view")}>View</button>
+                          <button type="button" className="sp-file-btn dl" onClick={() => openFile(r.fileName || "", r.fileData || "", "", "download")}>Download</button>
                         </div>
                       </div>
                     ))
@@ -670,9 +687,9 @@ export default function StudentPortal() {
                               {m.videoUrl ? (
                                 <button type="button" className="sp-file-btn view" onClick={() => window.open(m.videoUrl, "_blank")}>▶ Watch</button>
                               ) : (
-                                <button type="button" className="sp-file-btn view" onClick={() => openFile(m.fileName || "", m.videoUrl || "")}>View</button>
+                                <button type="button" className="sp-file-btn view" onClick={() => openFile(m.fileName || "", m.fileData || "", m.videoUrl || "", "view")}>View</button>
                               )}
-                              <button type="button" className="sp-file-btn dl" onClick={() => openFile(m.fileName || "", m.videoUrl || "")}>Download</button>
+                              <button type="button" className="sp-file-btn dl" onClick={() => openFile(m.fileName || "", m.fileData || "", m.videoUrl || "", "download")}>Download</button>
                             </div>
                           </td>
                         </tr>

@@ -9,6 +9,8 @@ export type HomeworkRecord = {
   description: string;
   dueDate: string;
   fileName: string;
+  fileData?: string;
+  fileMimeType?: string;
   teacherName: string;
   createdAt: string;
 };

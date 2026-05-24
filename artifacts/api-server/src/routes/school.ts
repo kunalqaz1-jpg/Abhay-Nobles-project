@@ -418,7 +418,13 @@ router.get("/students/:studentId/dashboard", requireAuth(["student"]), async (re
     Notice.find().sort({ createdTs: -1 }).limit(10),
     TimetableRow.find({ className: cls }),
     Event.find().sort({ createdTs: -1 }).limit(10),
-    Message.find({ className: cls }).sort({ sentTs: -1 }).limit(10),
+    Message.find({
+      $or: [
+        { className: cls },
+        { className: "" },
+        { studentId: student.studentId },
+      ],
+    }).sort({ sentTs: -1 }).limit(10),
     StudyMaterial.find({ className: cls }).sort({ updatedTs: -1 }).limit(10),
     AttendanceRecord.find().sort({ updatedAt: -1 }).limit(100),
   ]);
@@ -448,6 +454,8 @@ router.get("/students/:studentId/dashboard", requireAuth(["student"]), async (re
       dueDate: h.dueDate,
       status: "Pending",
       fileName: h.fileName ?? "",
+      fileData: h.fileData ?? "",
+      fileMimeType: h.fileMimeType ?? "",
       teacherName: h.teacherName,
     })),
     result: results.map((r) => ({
@@ -456,6 +464,8 @@ router.get("/students/:studentId/dashboard", requireAuth(["student"]), async (re
       subject: r.subject,
       examType: r.examType,
       fileName: r.fileName ?? "",
+      fileData: r.fileData ?? "",
+      fileMimeType: r.fileMimeType ?? "",
       teacherName: r.teacherName,
       createdAt: r.createdAt,
     })),
@@ -484,6 +494,8 @@ router.get("/students/:studentId/dashboard", requireAuth(["student"]), async (re
       title: m.title,
       type: m.resourceType,
       fileName: m.fileName ?? "",
+      fileData: m.fileData ?? "",
+      fileMimeType: m.fileMimeType ?? "",
       videoUrl: m.videoUrl ?? "",
     })),
   });
@@ -545,6 +557,8 @@ router.get("/teachers/:teacherId/dashboard", requireAuth(["teacher"]), async (re
       description: h.description,
       dueDate: h.dueDate,
       fileName: h.fileName,
+      fileData: h.fileData ?? "",
+      fileMimeType: h.fileMimeType ?? "",
       teacherName: h.teacherName,
       createdAt: h.createdAt,
     })),
@@ -556,6 +570,8 @@ router.get("/teachers/:teacherId/dashboard", requireAuth(["teacher"]), async (re
       examType: r.examType,
       title: r.title,
       fileName: r.fileName,
+      fileData: r.fileData ?? "",
+      fileMimeType: r.fileMimeType ?? "",
       targetRollNo: r.targetRollNo,
       teacherName: r.teacherName,
       createdAt: r.createdAt,
@@ -585,6 +601,8 @@ router.get("/teachers/:teacherId/dashboard", requireAuth(["teacher"]), async (re
       title: m.title,
       className: m.className,
       fileName: m.fileName,
+      fileData: m.fileData ?? "",
+      fileMimeType: m.fileMimeType ?? "",
       videoUrl: m.videoUrl,
       resourceType: m.resourceType,
       teacherName: m.teacherName,
@@ -617,9 +635,16 @@ router.get("/teachers/:teacherId/dashboard", requireAuth(["teacher"]), async (re
   });
 });
 
-router.post("/students/:studentId/fees", requireAuth(["admin"]), async (req, res) => {
+router.post("/students/:studentId/fees", requireAuth(["admin", "teacher"]), async (req: Request, res) => {
   const { studentId } = req.params;
   const { fees } = req.body;
+  if (req.session?.role === "teacher") {
+    const teacher = await Teacher.findOne({ teacherId: req.session.id });
+    const student = await Student.findOne({ studentId });
+    if (!teacher || !student || !teacherCanManageStudent(teacher, student)) {
+      return res.status(403).json({ error: "You can only update fees for students in your assigned classes" });
+    }
+  }
   const updated = await Student.findOneAndUpdate({ studentId }, { fees }, { new: true });
   if (!updated) return res.status(404).json({ error: "Student not found" });
   return res.json(formatStudent(updated));
@@ -724,48 +749,48 @@ router.get("/attendance/student/:studentId/latest", async (req, res) => {
 // ─── HOMEWORK ─────────────────────────────────────────────────────────────────
 
 router.post("/homework", requireAuth(["teacher", "admin"]), async (req, res) => {
-  const { id, className, section, subject, title, description, dueDate, fileName, teacherName, createdAt } = req.body;
+  const { id, className, section, subject, title, description, dueDate, fileName, fileData, fileMimeType, teacherName, createdAt } = req.body;
 
   const existing = await Homework.findOne({ hwId: id });
   if (existing) {
     const updated = await Homework.findOneAndUpdate(
       { hwId: id },
-      { className, section, subject, title, description, dueDate, fileName, teacherName, createdAt },
+      { className, section, subject, title, description, dueDate, fileName, fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", teacherName, createdAt },
       { new: true }
     );
     const h = updated!;
-    return res.json({ id: h.hwId, className: h.className, section: h.section, subject: h.subject, title: h.title, description: h.description, dueDate: h.dueDate, fileName: h.fileName, teacherName: h.teacherName, createdAt: h.createdAt });
+    return res.json({ id: h.hwId, className: h.className, section: h.section, subject: h.subject, title: h.title, description: h.description, dueDate: h.dueDate, fileName: h.fileName, fileData: h.fileData ?? "", fileMimeType: h.fileMimeType ?? "", teacherName: h.teacherName, createdAt: h.createdAt });
   }
 
-  const inserted = await Homework.create({ hwId: id, className, section, subject, title, description, dueDate, fileName, teacherName, createdAt });
-  return res.json({ id: inserted.hwId, className: inserted.className, section: inserted.section, subject: inserted.subject, title: inserted.title, description: inserted.description, dueDate: inserted.dueDate, fileName: inserted.fileName, teacherName: inserted.teacherName, createdAt: inserted.createdAt });
+  const inserted = await Homework.create({ hwId: id, className, section, subject, title, description, dueDate, fileName, fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", teacherName, createdAt });
+  return res.json({ id: inserted.hwId, className: inserted.className, section: inserted.section, subject: inserted.subject, title: inserted.title, description: inserted.description, dueDate: inserted.dueDate, fileName: inserted.fileName, fileData: inserted.fileData ?? "", fileMimeType: inserted.fileMimeType ?? "", teacherName: inserted.teacherName, createdAt: inserted.createdAt });
 });
 
 router.get("/homework/latest/:className", async (req, res) => {
   const className = decodeURIComponent(req.params.className);
   const h = await Homework.findOne({ className }).sort({ createdTs: -1 });
   if (!h) return res.status(404).json({ error: "No homework found" });
-  return res.json({ id: h.hwId, className: h.className, section: h.section, subject: h.subject, title: h.title, description: h.description, dueDate: h.dueDate, fileName: h.fileName, teacherName: h.teacherName, createdAt: h.createdAt });
+  return res.json({ id: h.hwId, className: h.className, section: h.section, subject: h.subject, title: h.title, description: h.description, dueDate: h.dueDate, fileName: h.fileName, fileData: h.fileData ?? "", fileMimeType: h.fileMimeType ?? "", teacherName: h.teacherName, createdAt: h.createdAt });
 });
 
 // ─── RESULTS ─────────────────────────────────────────────────────────────────
 
 router.post("/results", requireAuth(["teacher", "admin"]), async (req, res) => {
-  const { id, className, section, subject, examType, unitTestNumber, title, fileName, targetRollNo, teacherName, createdAt } = req.body;
+  const { id, className, section, subject, examType, unitTestNumber, title, fileName, fileData, fileMimeType, targetRollNo, teacherName, createdAt } = req.body;
 
   const existing = await Result.findOne({ resultId: id });
   if (existing) {
     const updated = await Result.findOneAndUpdate(
       { resultId: id },
-      { className, section, subject, examType, unitTestNumber: unitTestNumber ?? null, title, fileName, targetRollNo: targetRollNo ?? null, teacherName, createdAt },
+      { className, section, subject, examType, unitTestNumber: unitTestNumber ?? null, title, fileName, fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", targetRollNo: targetRollNo ?? null, teacherName, createdAt },
       { new: true }
     );
     const r = updated!;
-    return res.json({ id: r.resultId, className: r.className, section: r.section, subject: r.subject, examType: r.examType, unitTestNumber: r.unitTestNumber, title: r.title, fileName: r.fileName, targetRollNo: r.targetRollNo, teacherName: r.teacherName, createdAt: r.createdAt });
+    return res.json({ id: r.resultId, className: r.className, section: r.section, subject: r.subject, examType: r.examType, unitTestNumber: r.unitTestNumber, title: r.title, fileName: r.fileName, fileData: r.fileData ?? "", fileMimeType: r.fileMimeType ?? "", targetRollNo: r.targetRollNo, teacherName: r.teacherName, createdAt: r.createdAt });
   }
 
-  const inserted = await Result.create({ resultId: id, className, section, subject, examType, unitTestNumber: unitTestNumber ?? null, title, fileName: fileName ?? "", targetRollNo: targetRollNo ?? null, teacherName, createdAt });
-  return res.json({ id: inserted.resultId, className: inserted.className, section: inserted.section, subject: inserted.subject, examType: inserted.examType, unitTestNumber: inserted.unitTestNumber, title: inserted.title, fileName: inserted.fileName, targetRollNo: inserted.targetRollNo, teacherName: inserted.teacherName, createdAt: inserted.createdAt });
+  const inserted = await Result.create({ resultId: id, className, section, subject, examType, unitTestNumber: unitTestNumber ?? null, title, fileName: fileName ?? "", fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", targetRollNo: targetRollNo ?? null, teacherName, createdAt });
+  return res.json({ id: inserted.resultId, className: inserted.className, section: inserted.section, subject: inserted.subject, examType: inserted.examType, unitTestNumber: inserted.unitTestNumber, title: inserted.title, fileName: inserted.fileName, fileData: inserted.fileData ?? "", fileMimeType: inserted.fileMimeType ?? "", targetRollNo: inserted.targetRollNo, teacherName: inserted.teacherName, createdAt: inserted.createdAt });
 });
 
 router.get("/results/latest", async (req, res) => {
@@ -774,7 +799,7 @@ router.get("/results/latest", async (req, res) => {
   if (rollNo) filter.targetRollNo = rollNo;
   const r = await Result.findOne(filter).sort({ createdTs: -1 });
   if (!r) return res.status(404).json({ error: "No results found" });
-  return res.json({ id: r.resultId, className: r.className, section: r.section, subject: r.subject, examType: r.examType, unitTestNumber: r.unitTestNumber, title: r.title, fileName: r.fileName, targetRollNo: r.targetRollNo, teacherName: r.teacherName, createdAt: r.createdAt });
+  return res.json({ id: r.resultId, className: r.className, section: r.section, subject: r.subject, examType: r.examType, unitTestNumber: r.unitTestNumber, title: r.title, fileName: r.fileName, fileData: r.fileData ?? "", fileMimeType: r.fileMimeType ?? "", targetRollNo: r.targetRollNo, teacherName: r.teacherName, createdAt: r.createdAt });
 });
 
 // ─── NOTICES ─────────────────────────────────────────────────────────────────
@@ -848,25 +873,25 @@ router.get("/materials", async (req, res) => {
   } else {
     rows = await StudyMaterial.find().sort({ updatedTs: -1 });
   }
-  return res.json(rows.map((m) => ({ id: m.materialId, title: m.title, className: m.className, fileName: m.fileName, videoUrl: m.videoUrl, resourceType: m.resourceType, teacherName: m.teacherName, updatedAt: m.updatedAt })));
+  return res.json(rows.map((m) => ({ id: m.materialId, title: m.title, className: m.className, fileName: m.fileName, fileData: m.fileData ?? "", fileMimeType: m.fileMimeType ?? "", videoUrl: m.videoUrl, resourceType: m.resourceType, teacherName: m.teacherName, updatedAt: m.updatedAt })));
 });
 
 router.post("/materials", requireAuth(["teacher", "admin"]), async (req, res) => {
-  const { id, title, className, fileName, videoUrl, resourceType, teacherName, updatedAt } = req.body;
+  const { id, title, className, fileName, fileData, fileMimeType, videoUrl, resourceType, teacherName, updatedAt } = req.body;
 
   const existing = await StudyMaterial.findOne({ materialId: id });
   if (existing) {
     const updated = await StudyMaterial.findOneAndUpdate(
       { materialId: id },
-      { title, className, fileName, videoUrl, resourceType, teacherName: teacherName ?? "", updatedAt },
+      { title, className, fileName, fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", videoUrl, resourceType, teacherName: teacherName ?? "", updatedAt },
       { new: true }
     );
     const m = updated!;
-    return res.json({ id: m.materialId, title: m.title, className: m.className, fileName: m.fileName, videoUrl: m.videoUrl, resourceType: m.resourceType, teacherName: m.teacherName, updatedAt: m.updatedAt });
+    return res.json({ id: m.materialId, title: m.title, className: m.className, fileName: m.fileName, fileData: m.fileData ?? "", fileMimeType: m.fileMimeType ?? "", videoUrl: m.videoUrl, resourceType: m.resourceType, teacherName: m.teacherName, updatedAt: m.updatedAt });
   }
 
-  const inserted = await StudyMaterial.create({ materialId: id, title, className, fileName: fileName ?? "", videoUrl: videoUrl ?? "", resourceType, teacherName: teacherName ?? "", updatedAt });
-  return res.json({ id: inserted.materialId, title: inserted.title, className: inserted.className, fileName: inserted.fileName, videoUrl: inserted.videoUrl, resourceType: inserted.resourceType, teacherName: inserted.teacherName, updatedAt: inserted.updatedAt });
+  const inserted = await StudyMaterial.create({ materialId: id, title, className, fileName: fileName ?? "", fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", videoUrl: videoUrl ?? "", resourceType, teacherName: teacherName ?? "", updatedAt });
+  return res.json({ id: inserted.materialId, title: inserted.title, className: inserted.className, fileName: inserted.fileName, fileData: inserted.fileData ?? "", fileMimeType: inserted.fileMimeType ?? "", videoUrl: inserted.videoUrl, resourceType: inserted.resourceType, teacherName: inserted.teacherName, updatedAt: inserted.updatedAt });
 });
 
 // ─── TIMETABLE ───────────────────────────────────────────────────────────────
@@ -879,7 +904,7 @@ router.get("/timetable", async (req, res) => {
   return res.json(rows.map((t) => ({ id: t.rowId, className: t.className, period: t.period, subject: t.subject, time: t.time, updatedAt: t.updatedAt })));
 });
 
-router.post("/timetable", requireAuth(["admin"]), async (req, res) => {
+router.post("/timetable", requireAuth(["admin", "teacher"]), async (req, res) => {
   const { id, className, period, subject, time, updatedAt } = req.body;
 
   const existing = await TimetableRow.findOne({ rowId: id });

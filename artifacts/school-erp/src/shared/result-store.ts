@@ -11,6 +11,8 @@ export type ResultRecord = {
   unitTestNumber?: 1 | 2 | 3;
   title: string;
   fileName: string;
+  fileData?: string;
+  fileMimeType?: string;
   targetRollNo?: string;
   teacherName: string;
   createdAt: string;
