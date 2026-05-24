@@ -168,6 +168,17 @@ export default function AdminPrincipalDashboard() {
     eventDate: todayValue(),
   });
 
+  async function deleteTeacherAccount(teacherId: string, teacherName: string) {
+    const confirmed = window.confirm(`Delete teacher ${teacherName} (${teacherId}) and all uploaded data? This cannot be undone.`);
+    if (!confirmed) return;
+
+    await runSave("Teacher Delete", async () => {
+      await apiRequest(`/teachers/${encodeURIComponent(teacherId)}`, {
+        method: "DELETE",
+      });
+    });
+  }
+
   const loadDashboard = async (showSpinner = false) => {
     if (!session?.username) {
       setLocation("/admin/login");
@@ -659,6 +670,16 @@ export default function AdminPrincipalDashboard() {
                     <div key={teacher.teacherId} className="ap-item">
                       <strong>{teacher.name}</strong>
                       <small>{teacher.teacherId} · {teacher.subject}</small>
+                      <div style={{ marginTop: "0.75rem" }}>
+                        <button
+                          type="button"
+                          className="ap-btn secondary"
+                          disabled={saving === "Teacher Delete"}
+                          onClick={() => void deleteTeacherAccount(teacher.teacherId, teacher.name)}
+                        >
+                          {saving === "Teacher Delete" ? "Deleting…" : "Delete Teacher + Uploaded Data"}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

@@ -82,6 +82,7 @@ type TeacherDashboardData = {
     fileName: string;
     videoUrl: string;
     resourceType: string;
+    teacherName: string;
     updatedAt: string;
   }[];
   events: {
@@ -338,10 +339,22 @@ export default function TeacherDashboardClient() {
           fileName: materialForm.fileName,
           videoUrl: materialForm.videoUrl,
           resourceType: materialForm.resourceType,
+          teacherName: dashboard.teacher.name,
           updatedAt: nowLabel(),
         }),
       });
       setMaterialForm({ title: "", resourceType: "PDF", fileName: "", videoUrl: "" });
+    });
+  }
+
+  async function deleteStudentAccount(studentId: string, studentName: string) {
+    const confirmed = window.confirm(`Delete student ${studentName} (${studentId}) from the portal? This cannot be undone.`);
+    if (!confirmed) return;
+
+    await runSave("Student Delete", async () => {
+      await apiRequest(`/students/${encodeURIComponent(studentId)}`, {
+        method: "DELETE",
+      });
     });
   }
 
@@ -485,6 +498,7 @@ export default function TeacherDashboardClient() {
                       <th>Roll</th>
                       <th>Status</th>
                       <th>Remark</th>
+                      <th>Account</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -523,6 +537,17 @@ export default function TeacherDashboardClient() {
                             }))}
                             placeholder="Optional note"
                           />
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="td-btn secondary"
+                            disabled={saving === "Student Delete"}
+                            onClick={() => void deleteStudentAccount(student.studentId, student.fullName)}
+                            style={{ padding: "0.55rem 0.9rem" }}
+                          >
+                            {saving === "Student Delete" ? "Deleting…" : "Delete Student"}
+                          </button>
                         </td>
                       </tr>
                     ))}

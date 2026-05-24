@@ -167,6 +167,14 @@ function matchesStudentClass(student: IStudent, className?: string, section?: st
   return student.section === section;
 }
 
+function teacherCanManageStudent(teacher: ITeacher, student: IStudent) {
+  const assignedClasses = teacher.assignedClasses ?? [];
+  return assignedClasses.some((assignment) => {
+    const [className, section] = assignment.split("|").map((part) => part.trim());
+    return matchesStudentClass(student, className, section);
+  });
+}
+
 function formatAttendanceSummary(
   record: {
     className: string;
@@ -356,6 +364,42 @@ router.post("/students", requireAuth(["admin", "teacher"]), async (req, res) => 
   return res.json(formatStudent(inserted));
 });
 
+router.delete("/students/:studentId", requireAuth(["admin", "teacher"]), async (req: Request, res) => {
+  const { studentId } = req.params;
+  const student = await Student.findOne({ studentId });
+  if (!student) return res.status(404).json({ error: "Student not found" });
+
+  if (req.session?.role === "teacher") {
+    const teacher = await Teacher.findOne({ teacherId: req.session.id });
+    if (!teacher || !teacherCanManageStudent(teacher, student)) {
+      return res.status(403).json({ error: "You can only delete students from your assigned classes" });
+    }
+  }
+
+  await Promise.all([
+    Student.deleteOne({ studentId }),
+    Session.deleteMany({ role: "student", sessionId: studentId }),
+    Message.deleteMany({ studentId }),
+    Result.deleteMany({ className: student.className, targetRollNo: student.rollNo }),
+  ]);
+
+  const attendanceRecords = await AttendanceRecord.find({ "entries.studentId": studentId });
+  await Promise.all(attendanceRecords.map(async (record) => {
+    const nextEntries = ((record.entries as Array<{ studentId: string }>) ?? []).filter((entry) => entry.studentId !== studentId);
+    if (nextEntries.length === 0) {
+      await AttendanceRecord.deleteOne({ _id: record._id });
+      return;
+    }
+    record.entries = nextEntries;
+    await record.save();
+  }));
+
+  return res.json({
+    success: true,
+    deletedStudentId: studentId,
+  });
+});
+
 router.get("/students/:studentId/dashboard", requireAuth(["student"]), async (req: Request, res) => {
   const { studentId } = req.params;
   if (req.session!.id !== studentId) {
@@ -543,6 +587,7 @@ router.get("/teachers/:teacherId/dashboard", requireAuth(["teacher"]), async (re
       fileName: m.fileName,
       videoUrl: m.videoUrl,
       resourceType: m.resourceType,
+      teacherName: m.teacherName,
       updatedAt: m.updatedAt,
     })),
     events: events.map((e) => ({
@@ -607,6 +652,29 @@ router.post("/teachers", requireAuth(["admin"]), async (req, res) => {
     assignedClasses: assignedClasses ?? [],
   });
   return res.json(formatTeacher(inserted));
+});
+
+router.delete("/teachers/:teacherId", requireAuth(["admin"]), async (req, res) => {
+  const { teacherId } = req.params;
+  const teacher = await Teacher.findOne({ teacherId });
+  if (!teacher) return res.status(404).json({ error: "Teacher not found" });
+
+  await Promise.all([
+    Teacher.deleteOne({ teacherId }),
+    Session.deleteMany({ role: "teacher", sessionId: teacherId }),
+    Homework.deleteMany({ teacherName: teacher.name }),
+    Result.deleteMany({ teacherName: teacher.name }),
+    Notice.deleteMany({ teacherName: teacher.name }),
+    Message.deleteMany({ teacherName: teacher.name }),
+    StudyMaterial.deleteMany({ teacherName: teacher.name }),
+    Event.deleteMany({ teacherName: teacher.name }),
+    AttendanceRecord.deleteMany({ teacherName: teacher.name }),
+  ]);
+
+  return res.json({
+    success: true,
+    deletedTeacherId: teacherId,
+  });
 });
 
 // ─── ATTENDANCE ───────────────────────────────────────────────────────────────
@@ -780,25 +848,25 @@ router.get("/materials", async (req, res) => {
   } else {
     rows = await StudyMaterial.find().sort({ updatedTs: -1 });
   }
-  return res.json(rows.map((m) => ({ id: m.materialId, title: m.title, className: m.className, fileName: m.fileName, videoUrl: m.videoUrl, resourceType: m.resourceType, updatedAt: m.updatedAt })));
+  return res.json(rows.map((m) => ({ id: m.materialId, title: m.title, className: m.className, fileName: m.fileName, videoUrl: m.videoUrl, resourceType: m.resourceType, teacherName: m.teacherName, updatedAt: m.updatedAt })));
 });
 
 router.post("/materials", requireAuth(["teacher", "admin"]), async (req, res) => {
-  const { id, title, className, fileName, videoUrl, resourceType, updatedAt } = req.body;
+  const { id, title, className, fileName, videoUrl, resourceType, teacherName, updatedAt } = req.body;
 
   const existing = await StudyMaterial.findOne({ materialId: id });
   if (existing) {
     const updated = await StudyMaterial.findOneAndUpdate(
       { materialId: id },
-      { title, className, fileName, videoUrl, resourceType, updatedAt },
+      { title, className, fileName, videoUrl, resourceType, teacherName: teacherName ?? "", updatedAt },
       { new: true }
     );
     const m = updated!;
-    return res.json({ id: m.materialId, title: m.title, className: m.className, fileName: m.fileName, videoUrl: m.videoUrl, resourceType: m.resourceType, updatedAt: m.updatedAt });
+    return res.json({ id: m.materialId, title: m.title, className: m.className, fileName: m.fileName, videoUrl: m.videoUrl, resourceType: m.resourceType, teacherName: m.teacherName, updatedAt: m.updatedAt });
   }
 
-  const inserted = await StudyMaterial.create({ materialId: id, title, className, fileName: fileName ?? "", videoUrl: videoUrl ?? "", resourceType, updatedAt });
-  return res.json({ id: inserted.materialId, title: inserted.title, className: inserted.className, fileName: inserted.fileName, videoUrl: inserted.videoUrl, resourceType: inserted.resourceType, updatedAt: inserted.updatedAt });
+  const inserted = await StudyMaterial.create({ materialId: id, title, className, fileName: fileName ?? "", videoUrl: videoUrl ?? "", resourceType, teacherName: teacherName ?? "", updatedAt });
+  return res.json({ id: inserted.materialId, title: inserted.title, className: inserted.className, fileName: inserted.fileName, videoUrl: inserted.videoUrl, resourceType: inserted.resourceType, teacherName: inserted.teacherName, updatedAt: inserted.updatedAt });
 });
 
 // ─── TIMETABLE ───────────────────────────────────────────────────────────────

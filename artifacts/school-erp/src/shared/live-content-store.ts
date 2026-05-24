@@ -30,6 +30,7 @@ export type StudyMaterialRecord = {
   fileName: string;
   videoUrl: string;
   resourceType: string;
+  teacherName?: string;
   updatedAt: string;
 };
 

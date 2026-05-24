@@ -28,6 +28,31 @@ A full-stack School ERP system for managing students, teachers, admin operations
    - `pnpm --filter @workspace/scripts run admin:create -- --username admin --password yourStrongPassword`
 4. Log in from `/admin/login` with the username and password you created.
 
+## Fresh ERP Reset
+
+If you want to start over with brand-new admin, teacher, and student portal records:
+
+- Reset ERP portal data only:
+  - `pnpm --filter @workspace/scripts run school:reset -- --confirm RESET`
+- Also clear admissions + contact enquiries:
+  - `pnpm --filter @workspace/scripts run school:reset -- --confirm RESET --include-enquiries`
+- Also clear website-managed announcements + gallery images:
+  - `pnpm --filter @workspace/scripts run school:reset -- --confirm RESET --include-enquiries --include-website-content`
+
+By default, the reset keeps website content intact and clears:
+- admins
+- teachers
+- students
+- login sessions
+- attendance
+- homework
+- results
+- notices
+- messages
+- study materials
+- timetable rows
+- events
+
 ### PowerShell example
 
 ```powershell

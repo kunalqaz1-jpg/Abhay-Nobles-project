@@ -6,6 +6,7 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "admin:create": "tsx ./src/create-admin.ts",
+    "school:reset": "tsx ./src/reset-school-erp.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

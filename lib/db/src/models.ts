@@ -217,6 +217,7 @@ export interface IStudyMaterial extends Document {
   fileName: string;
   videoUrl: string;
   resourceType: string;
+  teacherName: string;
   updatedAt: string;
 }
 
@@ -227,6 +228,7 @@ const StudyMaterialSchema = new Schema<IStudyMaterial>({
   fileName: { type: String, default: "" },
   videoUrl: { type: String, default: "" },
   resourceType: { type: String, required: true },
+  teacherName: { type: String, default: "" },
   updatedAt: { type: String, required: true },
 }, { timestamps: { createdAt: "createdTs", updatedAt: "updatedTs" } });
 
