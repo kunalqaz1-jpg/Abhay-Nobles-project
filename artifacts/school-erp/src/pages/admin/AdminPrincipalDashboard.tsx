@@ -1,723 +1,841 @@
-import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "wouter";
-import { apiRequest } from "@/shared/api-base";
+﻿
 
-type AdminSession = { id: string; username: string };
-type StudentRecord = {
-  studentId: string;
-  fullName: string;
-  className: string;
-  section: string;
-  rollNo: string;
-  photo?: string;
-  parents: { relation: string; name: string; phone: string }[];
-  fees: {
-    currentTermStatus?: string;
-    currentTermNote?: string;
-    nextDueAmount?: string;
-    nextDueLabel?: string;
-    history?: { period: string; amount: string; status: string }[];
-  };
-};
-type TeacherRecord = {
-  teacherId: string;
-  name: string;
-  subject: string;
-  qualification: string;
-  joinDate: string;
-  phone: string;
-  assignedClasses: string[];
-};
-type AdminDashboardData = {
-  kpis: { label: string; value: string; sub: string }[];
-  recentAdmissions: {
-    id: string;
-    studentName: string;
-    parentName: string;
-    phone: string;
-    email: string;
-    classApplied: string;
-    message: string;
-    status: string;
-    createdAt: string;
-  }[];
-  recentAttendance: {
-    className: string;
-    date: string;
-    teacherName: string;
-    updatedAt: string;
-    presentCount: number;
-    absentCount: number;
-    totalStudents: number;
-  }[];
-  students: StudentRecord[];
-  teachers: TeacherRecord[];
-  notices: {
-    id: string;
-    title: string;
-    description: string;
-    audience: string;
-    className: string;
-    teacherName: string;
-    createdAt: string;
-  }[];
-  events: {
-    id: string;
-    className: string;
-    title: string;
-    description: string;
-    eventDate: string;
-    teacherName: string;
-    createdAt: string;
-  }[];
-  timetable: {
-    id: string;
-    className: string;
-    period: string;
-    subject: string;
-    time: string;
-    updatedAt: string;
-  }[];
-  contacts: {
-    id: string;
-    fullName: string;
-    phone: string;
-    email: string;
-    subject: string;
-    message: string;
-    createdAt: string;
-  }[];
-};
+import { Link } from "wouter";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { SVGProps } from "react";
+import { AdminDemoView, type NavKey } from "./admin-demo-views";
+import "./admin-principal.css";
 
-function getAdminSession(): AdminSession | null {
-  try {
-    const raw = sessionStorage.getItem("abhay_admin_session");
-    return raw ? (JSON.parse(raw) as AdminSession) : null;
-  } catch {
-    return null;
-  }
-}
+const DEFAULT_KPI = [
+  { label: "Total Students", value: "—", sub: "enrolled", trend: "up" as const },
+  { label: "Total Teachers", value: "—", sub: "on staff", trend: "up" as const },
+  { label: "Admissions", value: "—", sub: "recent inquiries", trend: "up" as const },
+  { label: "Attendance Records", value: "—", sub: "recent entries", trend: "up" as const },
+];
 
-function todayValue() {
-  return new Date().toISOString().slice(0, 10);
-}
+const activities = [
+  {
+    title: "New student admission",
+    detail: "Grade IX — Admission form verified",
+    time: "10 min ago",
+    bg: "#dbeafe",
+    color: "#1d4ed8",
+    Icon: IconUsers,
+  },
+  {
+    title: "Fee payment received",
+    detail: "₹48,500 — Term II installment",
+    time: "32 min ago",
+    bg: "#dcfce7",
+    color: "#15803d",
+    Icon: IconCurrency,
+  },
+  {
+    title: "Exam scheduled",
+    detail: "Pre-board — Science practical batch A",
+    time: "1 hr ago",
+    bg: "#ffedd5",
+    color: "#c2410c",
+    Icon: IconClipboard,
+  },
+];
 
-function nowLabel() {
-  return new Date().toLocaleString("en-IN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
+const activitiesMore = [
+  ...activities,
+  {
+    title: "Timetable revision published",
+    detail: "Grade X — Monday slot swap applied",
+    time: "2 hr ago",
+    bg: "#f3e8ff",
+    color: "#7c3aed",
+    Icon: IconCalendar,
+  },
+  {
+    title: "Document uploaded",
+    detail: "Board registration circular 2026.pdf",
+    time: "3 hr ago",
+    bg: "#e0f2fe",
+    color: "#0369a1",
+    Icon: IconFolder,
+  },
+  {
+    title: "Low attendance alert",
+    detail: "Class IX-B below 85% this week",
+    time: "5 hr ago",
+    bg: "#fee2e2",
+    color: "#dc2626",
+    Icon: IconBell,
+  },
+  {
+    title: "Salary batch processed",
+    detail: "May payroll — 86 staff",
+    time: "Yesterday",
+    bg: "#ecfdf5",
+    color: "#15803d",
+    Icon: IconWallet,
+  },
+  {
+    title: "Parent enquiry resolved",
+    detail: "Transport route C — callback logged",
+    time: "Yesterday",
+    bg: "#f1f5f9",
+    color: "#475569",
+    Icon: IconUsers,
+  },
+];
+
+const admissionBars = [42, 55, 38, 62, 48, 71, 65, 58, 80, 52, 67, 74];
+const monthLabels = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
+
+const events = [
+  { day: "12", mon: "May", title: "PTM — Class X", tag: "Meeting", tagClass: "meeting" as const },
+  { day: "18", mon: "May", title: "Annual Sports Day", tag: "Event", tagClass: "event" as const },
+  { day: "22", mon: "May", title: "Pre-board — Mathematics", tag: "Exam", tagClass: "exam" as const },
+];
+
+const SEARCH_INDEX: { title: string; sub: string; nav: NavKey; keywords: string }[] = [
+  { title: "Teachers", sub: "Staff directory & assignments", nav: "teachers", keywords: "teacher staff faculty" },
+  { title: "Attendance", sub: "Class-wise attendance", nav: "attendance", keywords: "present absent" },
+  { title: "Fee Management", sub: "Collections & defaulters", nav: "fees", keywords: "fee payment pending" },
+  { title: "Notices", sub: "School announcements", nav: "notices", keywords: "notice circular message" },
+  { title: "Settings", sub: "Institution configuration", nav: "settings", keywords: "config role year" },
+];
+
+const NAV_DEF: { id: NavKey; label: string; Icon: typeof IconLayout }[] = [
+  { id: "dashboard", label: "Dashboard", Icon: IconLayout },
+  { id: "teachers", label: "Teachers", Icon: IconTeacher },
+  { id: "attendance", label: "Attendance", Icon: IconCheck },
+  { id: "fees", label: "Fee Management", Icon: IconCurrency },
+  { id: "timetable", label: "Timetable", Icon: IconCalendar },
+  { id: "notices", label: "Notices", Icon: IconBell },
+  { id: "enquiries", label: "Enquiries", Icon: IconInbox },
+  { id: "gallery", label: "Gallery Manager", Icon: IconPhoto },
+  { id: "settings", label: "Settings", Icon: IconGear },
+];
 
 export default function AdminPrincipalDashboard() {
-  const [, setLocation] = useLocation();
-  const [session] = useState<AdminSession | null>(() => getAdminSession());
-  const [dashboard, setDashboard] = useState<AdminDashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<string | null>(null);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [studentForm, setStudentForm] = useState({
-    studentId: "",
-    fullName: "",
-    className: "",
-    section: "",
-    rollNo: "",
-    password: "",
-    fatherName: "",
-    fatherPhone: "",
-    motherName: "",
-    motherPhone: "",
-  });
-  const [teacherForm, setTeacherForm] = useState({
-    teacherId: "",
-    name: "",
-    subject: "",
-    qualification: "",
-    joinDate: todayValue(),
-    phone: "",
-    password: "",
-    assignedClasses: "",
-  });
-  const [feeForm, setFeeForm] = useState({
-    studentId: "",
-    currentTermStatus: "Pending",
-    currentTermNote: "",
-    nextDueAmount: "",
-    nextDueLabel: "",
-    historyPeriod: "",
-    historyAmount: "",
-    historyStatus: "Pending",
-  });
-  const [timetableForm, setTimetableForm] = useState({
-    className: "",
-    period: "",
-    subject: "",
-    time: "",
-  });
-  const [noticeForm, setNoticeForm] = useState({
-    title: "",
-    description: "",
-    audience: "all",
-    className: "",
-  });
-  const [eventForm, setEventForm] = useState({
-    title: "",
-    description: "",
-    className: "",
-    eventDate: todayValue(),
-  });
+  const [activeNav, setActiveNav] = useState<NavKey>("dashboard");
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [notifyOpen, setNotifyOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showAllActivity, setShowAllActivity] = useState(false);
+  const [attendanceRange, setAttendanceRange] = useState<"month" | "year">("month");
+  const [toast, setToast] = useState<string | null>(null);
+  const [kpi, setKpi] = useState(DEFAULT_KPI);
 
-  async function deleteTeacherAccount(teacherId: string, teacherName: string) {
-    const confirmed = window.confirm(`Delete teacher ${teacherName} (${teacherId}) and all uploaded data? This cannot be undone.`);
-    if (!confirmed) return;
-
-    await runSave("Teacher Delete", async () => {
-      await apiRequest(`/teachers/${encodeURIComponent(teacherId)}`, {
-        method: "DELETE",
-      });
-    });
-  }
-
-  const loadDashboard = async (showSpinner = false) => {
-    if (!session?.username) {
-      setLocation("/admin/login");
+  useEffect(() => {
+    const token = (() => { try { return sessionStorage.getItem("abhay_admin_token") ?? ""; } catch { return ""; } })();
+    if (!token || token === "demo-admin-token") {
       return;
     }
+    fetch("/api/admin/dashboard", token ? { headers: { Authorization: `Bearer ${token}` } } : undefined)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.kpis) setKpi(data.kpis.map((k: { label: string; value: string; sub: string }) => ({ ...k, trend: "up" as const })));
+      })
+      .catch(() => {});
+  }, []);
 
-    if (showSpinner) setLoading(true);
-    try {
-      const data = await apiRequest<AdminDashboardData>("/admin/dashboard");
-      setDashboard(data);
-      setError("");
-      if (!feeForm.studentId && data.students.length > 0) {
-        setFeeForm((form) => ({ ...form, studentId: data.students[0].studentId }));
+  const quickRef = useRef<HTMLDivElement>(null);
+  const notifyRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = window.setTimeout(() => setToast(null), 2800);
+    return () => window.clearTimeout(t);
+  }, [toast]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+        window.setTimeout(() => searchInputRef.current?.focus(), 50);
       }
-    } catch (fetchError) {
-      const message = fetchError instanceof Error ? fetchError.message : "Unable to load admin dashboard.";
-      setError(message);
-      if (message.toLowerCase().includes("session") || message.toLowerCase().includes("unauthorised")) {
-        handleLogout();
+      if (e.key === "Escape") {
+        setSearchOpen(false);
+        setQuickOpen(false);
+        setNotifyOpen(false);
+        setProfileOpen(false);
+        setMobileOpen(false);
       }
-    } finally {
-      if (showSpinner) setLoading(false);
     }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    function onMouseDown(ev: MouseEvent) {
+      const t = ev.target as Node;
+      if (quickRef.current?.contains(t)) return;
+      if (notifyRef.current?.contains(t)) return;
+      if (profileRef.current?.contains(t)) return;
+      setQuickOpen(false);
+      setNotifyOpen(false);
+      setProfileOpen(false);
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, []);
+
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus();
+  }, [searchOpen]);
+
+  const go = (nav: NavKey, message?: string) => {
+    setActiveNav(nav);
+    setQuickOpen(false);
+    setNotifyOpen(false);
+    setProfileOpen(false);
+    setSearchOpen(false);
+    if (message) showToast(message);
   };
 
-  useEffect(() => {
-    if (!session?.username) {
-      setLocation("/admin/login");
-      return;
-    }
-    void loadDashboard(true);
-  }, [session?.username]);
+  const filteredSearch = SEARCH_INDEX.filter((item) => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      item.title.toLowerCase().includes(q) ||
+      item.sub.toLowerCase().includes(q) ||
+      item.keywords.includes(q)
+    );
+  });
 
-  useEffect(() => {
-    if (!session?.username) return;
-    const timer = window.setInterval(() => {
-      void loadDashboard(false);
-    }, 10000);
-    return () => window.clearInterval(timer);
-  }, [session?.username]);
+  const activityList = showAllActivity ? activitiesMore : activities;
 
-  const selectedStudent = useMemo(
-    () => dashboard?.students.find((student) => student.studentId === feeForm.studentId) ?? null,
-    [dashboard, feeForm.studentId],
-  );
+  const pageTitle =
+    activeNav === "dashboard"
+      ? "Welcome back, Principal 👋"
+      : NAV_DEF.find((n) => n.id === activeNav)?.label ?? "Dashboard";
 
-  function handleLogout() {
-    sessionStorage.removeItem("abhay_admin_session");
-    sessionStorage.removeItem("abhay_admin_token");
-    setLocation("/admin/login");
-  }
-
-  async function runSave(label: string, action: () => Promise<void>) {
-    setSaving(label);
-    setError("");
-    setNotice("");
-    try {
-      await action();
-      await loadDashboard(false);
-      setNotice(`${label} saved successfully.`);
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : `Unable to save ${label.toLowerCase()}.`);
-    } finally {
-      setSaving(null);
-    }
-  }
-
-  async function saveStudent() {
-    await runSave("Student", async () => {
-      await apiRequest("/students", {
-        method: "POST",
-        body: JSON.stringify({
-          studentId: studentForm.studentId,
-          fullName: studentForm.fullName,
-          className: studentForm.className,
-          section: studentForm.section,
-          rollNo: studentForm.rollNo,
-          password: studentForm.password,
-          parents: [
-            { relation: "Father", name: studentForm.fatherName, phone: studentForm.fatherPhone },
-            { relation: "Mother", name: studentForm.motherName, phone: studentForm.motherPhone },
-          ].filter((parent) => parent.name || parent.phone),
-          fees: selectedStudent?.fees ?? {},
-        }),
-      });
-      setStudentForm({
-        studentId: "",
-        fullName: "",
-        className: "",
-        section: "",
-        rollNo: "",
-        password: "",
-        fatherName: "",
-        fatherPhone: "",
-        motherName: "",
-        motherPhone: "",
-      });
-    });
-  }
-
-  async function saveTeacher() {
-    await runSave("Teacher", async () => {
-      await apiRequest("/teachers", {
-        method: "POST",
-        body: JSON.stringify({
-          teacherId: teacherForm.teacherId,
-          name: teacherForm.name,
-          subject: teacherForm.subject,
-          qualification: teacherForm.qualification,
-          joinDate: teacherForm.joinDate,
-          phone: teacherForm.phone,
-          password: teacherForm.password,
-          assignedClasses: teacherForm.assignedClasses.split(",").map((item) => item.trim()).filter(Boolean),
-        }),
-      });
-      setTeacherForm({
-        teacherId: "",
-        name: "",
-        subject: "",
-        qualification: "",
-        joinDate: todayValue(),
-        phone: "",
-        password: "",
-        assignedClasses: "",
-      });
-    });
-  }
-
-  async function saveFees() {
-    if (!feeForm.studentId) return;
-    await runSave("Fees", async () => {
-      const existingHistory = selectedStudent?.fees?.history ?? [];
-      const nextHistory = feeForm.historyPeriod
-        ? [{ period: feeForm.historyPeriod, amount: feeForm.historyAmount, status: feeForm.historyStatus }, ...existingHistory]
-        : existingHistory;
-
-      await apiRequest(`/students/${encodeURIComponent(feeForm.studentId)}/fees`, {
-        method: "POST",
-        body: JSON.stringify({
-          fees: {
-            currentTermStatus: feeForm.currentTermStatus,
-            currentTermNote: feeForm.currentTermNote,
-            nextDueAmount: feeForm.nextDueAmount,
-            nextDueLabel: feeForm.nextDueLabel,
-            history: nextHistory,
-          },
-        }),
-      });
-      setFeeForm((form) => ({
-        ...form,
-        historyPeriod: "",
-        historyAmount: "",
-        historyStatus: "Pending",
-      }));
-    });
-  }
-
-  async function saveTimetable() {
-    await runSave("Timetable", async () => {
-      await apiRequest("/timetable", {
-        method: "POST",
-        body: JSON.stringify({
-          id: crypto.randomUUID(),
-          className: timetableForm.className,
-          period: timetableForm.period,
-          subject: timetableForm.subject,
-          time: timetableForm.time,
-          updatedAt: nowLabel(),
-        }),
-      });
-      setTimetableForm({ className: "", period: "", subject: "", time: "" });
-    });
-  }
-
-  async function saveNotice() {
-    await runSave("Notice", async () => {
-      await apiRequest("/notices", {
-        method: "POST",
-        body: JSON.stringify({
-          id: crypto.randomUUID(),
-          title: noticeForm.title,
-          description: noticeForm.description,
-          audience: noticeForm.audience,
-          className: noticeForm.audience === "all" ? "" : noticeForm.className,
-          teacherName: "Admin",
-          createdAt: nowLabel(),
-        }),
-      });
-      setNoticeForm({ title: "", description: "", audience: "all", className: "" });
-    });
-  }
-
-  async function saveEvent() {
-    await runSave("Event", async () => {
-      await apiRequest("/events", {
-        method: "POST",
-        body: JSON.stringify({
-          id: crypto.randomUUID(),
-          className: eventForm.className,
-          title: eventForm.title,
-          description: eventForm.description,
-          eventDate: eventForm.eventDate,
-          teacherName: "Admin",
-          createdAt: nowLabel(),
-        }),
-      });
-      setEventForm({ title: "", description: "", className: "", eventDate: todayValue() });
-    });
-  }
-
-  if (!session) return null;
+  const pageSub =
+    activeNav === "dashboard"
+      ? "Here's what's happening in your institution today."
+      : `Demo workspace · ${NAV_DEF.find((n) => n.id === activeNav)?.label ?? ""}`;
 
   return (
-    <>
-      <style>{`
-        .ap-live { min-height: 100vh; background: #f5f7fb; color: #0f172a; font-family: "Outfit", sans-serif; }
-        .ap-shell { max-width: 1450px; margin: 0 auto; padding: 1.5rem; }
-        .ap-top { display: flex; justify-content: space-between; gap: 1rem; align-items: center; margin-bottom: 1.5rem; }
-        .ap-title h1 { margin: 0; font-size: clamp(1.9rem, 4vw, 2.8rem); font-family: "Cormorant Garamond", serif; }
-        .ap-title p { margin: 0.35rem 0 0; color: #475569; }
-        .ap-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
-        .ap-btn, .ap-live input, .ap-live select, .ap-live textarea { font: inherit; }
-        .ap-btn { border: none; border-radius: 999px; padding: 0.8rem 1.2rem; cursor: pointer; }
-        .ap-btn.primary { background: linear-gradient(135deg, #c9a84c, #ead48e); color: #10213b; font-weight: 700; }
-        .ap-btn.secondary { background: #10213b; color: #fff; }
-        .ap-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 1rem; }
-        .ap-card { background: #fff; border-radius: 22px; padding: 1.2rem; border: 1px solid rgba(15,23,42,0.08); box-shadow: 0 18px 44px rgba(15,23,42,0.06); }
-        .ap-card h2, .ap-card h3 { margin: 0 0 0.8rem; }
-        .ap-card h2 { font-size: 1.05rem; }
-        .ap-card h3 { font-size: 0.92rem; color: #475569; }
-        .ap-span-3 { grid-column: span 3; }
-        .ap-span-4 { grid-column: span 4; }
-        .ap-span-5 { grid-column: span 5; }
-        .ap-span-6 { grid-column: span 6; }
-        .ap-span-7 { grid-column: span 7; }
-        .ap-span-8 { grid-column: span 8; }
-        .ap-span-12 { grid-column: span 12; }
-        .ap-kpi strong { display: block; font-size: 1.9rem; margin-top: 0.25rem; }
-        .ap-kpi span { color: #64748b; font-size: 0.86rem; }
-        .ap-form { display: grid; gap: 0.75rem; }
-        .ap-form.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .ap-form.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-        .ap-form input, .ap-form select, .ap-form textarea { width: 100%; border: 1px solid rgba(15,23,42,0.14); border-radius: 12px; padding: 0.72rem 0.85rem; background: #fff; }
-        .ap-form textarea { min-height: 88px; resize: vertical; }
-        .ap-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
-        .ap-table th, .ap-table td { text-align: left; padding: 0.65rem; border-bottom: 1px solid rgba(15,23,42,0.08); vertical-align: top; }
-        .ap-table th { color: #475569; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
-        .ap-list { display: grid; gap: 0.75rem; }
-        .ap-item { border-radius: 14px; border: 1px solid rgba(15,23,42,0.08); background: #f8fafc; padding: 0.85rem; }
-        .ap-item strong { display: block; margin-bottom: 0.25rem; }
-        .ap-item small { color: #64748b; }
-        .ap-banner { margin-bottom: 1rem; padding: 0.85rem 1rem; border-radius: 14px; }
-        .ap-banner.error { background: #fee2e2; color: #991b1b; }
-        .ap-banner.ok { background: #dcfce7; color: #166534; }
-        .ap-muted { color: #64748b; }
-        @media (max-width: 1100px) {
-          .ap-span-3, .ap-span-4, .ap-span-5, .ap-span-6, .ap-span-7, .ap-span-8 { grid-column: span 12; }
-          .ap-top { flex-direction: column; align-items: flex-start; }
-          .ap-form.two, .ap-form.three { grid-template-columns: 1fr; }
-        }
-      `}</style>
-      <div className="ap-live">
-        <div className="ap-shell">
-          <div className="ap-top">
-            <div className="ap-title">
-              <h1>Admin Dashboard</h1>
-              <p>Live ERP control panel. Changes here sync to teacher and student portals on automatic refresh.</p>
+    <div className={`ap-erp${mobileOpen ? " ap-mobile-open" : ""}`}>
+      {toast ? <div className="ap-toast" role="status">{toast}</div> : null}
+      <div className="ap-sidebar-overlay" onClick={() => setMobileOpen(false)} />
+
+      {searchOpen ? (
+        <div
+          className="ap-search-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Search"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setSearchOpen(false);
+          }}
+        >
+          <div className="ap-search-modal" onMouseDown={(e) => e.stopPropagation()}>
+            <input
+              ref={searchInputRef}
+              type="search"
+              placeholder="Search modules, students, actions…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="Command search"
+            />
+            <p className="ap-search-hint">↑↓ Demo results · Enter to open · Esc to close · ⌘K to toggle</p>
+            <div className="ap-search-results">
+              {filteredSearch.map((item) => (
+                <button
+                  key={item.nav + item.title}
+                  type="button"
+                  className="ap-search-result-btn"
+                  onClick={() => go(item.nav, `Opened: ${item.title}`)}
+                >
+                  {item.title}
+                  <span>{item.sub}</span>
+                </button>
+              ))}
+              {filteredSearch.length === 0 ? (
+                <p className="ap-search-hint" style={{ padding: "1rem" }}>
+                  No demo matches. Try “fee”, “exam”, or “student”.
+                </p>
+              ) : null}
             </div>
-            <div className="ap-actions">
-              <button type="button" className="ap-btn secondary" onClick={() => void loadDashboard(false)}>
-                Refresh
+          </div>
+        </div>
+      ) : null}
+
+      <aside className="ap-sidebar" aria-label="Main navigation">
+        <div className="ap-brand">
+          <div className="ap-logo" aria-hidden>
+            SAN
+          </div>
+          <div className="ap-brand-text">
+            <strong>SHRI ABHAY NOBLES</strong>
+            <span>Senior Secondary School</span>
+          </div>
+        </div>
+        <nav className="ap-nav">
+          {NAV_DEF.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`ap-nav-item ${activeNav === item.id ? "ap-nav-active" : ""}`}
+              onClick={() => {
+                setActiveNav(item.id);
+                setMobileOpen(false);
+                if (item.id !== "dashboard") showToast(`Opened: ${item.label}`);
+              }}
+            >
+              <item.Icon />
+              {item.label}
+            </button>
+          ))}
+        </nav>
+        <div className="ap-sidebar-footer">
+          <div className="ap-user-card">
+            <div className="ap-sidebar-avatar-sm" aria-hidden>
+              N
+            </div>
+            <div className="ap-user-meta">
+              <strong>Principal</strong>
+              <small>
+                <span className="ap-dot-online" aria-hidden />
+                Shri Abhay Nobles · Online
+              </small>
+            </div>
+          </div>
+          <Link href="/admin/login" className="ap-btn-logout">
+            Logout
+          </Link>
+        </div>
+      </aside>
+
+      <div className="ap-main">
+        <header className="ap-topbar">
+          <button
+            type="button"
+            className="ap-hamburger"
+            aria-label="Toggle sidebar"
+            onClick={() => setMobileOpen((v) => !v)}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
+              <rect y="3" width="20" height="2" rx="1" fill="currentColor" />
+              <rect y="9" width="20" height="2" rx="1" fill="currentColor" />
+              <rect y="15" width="20" height="2" rx="1" fill="currentColor" />
+            </svg>
+          </button>
+          <div className="ap-search-wrap">
+            <IconSearch />
+            <input
+              type="search"
+              placeholder="Search students, teachers, classes..."
+              aria-label="Search"
+              onFocus={() => setSearchOpen(true)}
+              onClick={() => setSearchOpen(true)}
+              readOnly
+            />
+            <kbd className="ap-kbd">⌘ K</kbd>
+          </div>
+          <div className="ap-topbar-right">
+            <span className="ap-badge-status">
+              <span className="ap-pulse" aria-hidden />
+              All Systems Operational
+            </span>
+            <span className="ap-date-pill">
+              <IconCalendarSmall />
+              8 May 2026, Thursday
+            </span>
+
+            <div className="ap-dropdown-wrap" ref={notifyRef}>
+              <button
+                type="button"
+                className="ap-notify-btn"
+                aria-label="Notifications, 8 unread"
+                aria-expanded={notifyOpen}
+                onClick={() => {
+                  setNotifyOpen((v) => !v);
+                  setProfileOpen(false);
+                  setQuickOpen(false);
+                }}
+              >
+                <IconBellOutline />
+                <span className="ap-notify-count">8</span>
               </button>
-              <button type="button" className="ap-btn primary" onClick={handleLogout}>
-                Logout
+              {notifyOpen ? (
+                <div className="ap-dropdown-panel">
+                  <div className="ap-dropdown-head">Notifications</div>
+                  <button
+                    type="button"
+                    className="ap-dropdown-item ap-emergency"
+                    onClick={() => go("notices", "Emergency: Weather advisory (demo)")}
+                  >
+                    <strong>Transport advisory</strong>
+                    <small>Route C delay · 12 min ago</small>
+                  </button>
+                  <button
+                    type="button"
+                    className="ap-dropdown-item"
+                    onClick={() => go("fees", "12 fee reminders pending (demo)")}
+                  >
+                    <strong>Fee reminders</strong>
+                    <small>12 parents · batch ready</small>
+                  </button>
+                  <div className="ap-dropdown-divider" />
+                  <button
+                    type="button"
+                    className="ap-dropdown-item"
+                    onClick={() => go("dashboard", "All notifications marked read (demo)")}
+                  >
+                    <small>Mark all as read</small>
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="ap-dropdown-wrap ap-profile-menu" ref={profileRef}>
+              <button
+                type="button"
+                className="ap-profile"
+                aria-label="Principal Admin menu"
+                aria-expanded={profileOpen}
+                onClick={() => {
+                  setProfileOpen((v) => !v);
+                  setNotifyOpen(false);
+                  setQuickOpen(false);
+                }}
+              >
+                <span className="ap-profile-avatar" aria-hidden />
+                <span>Principal Admin</span>
+                <IconChevron className={`chev ${profileOpen ? "ap-chev-rot" : ""}`} />
               </button>
+              {profileOpen ? (
+                <div className="ap-dropdown-panel">
+                  <button type="button" className="ap-dropdown-item" onClick={() => showToast("Demo: My profile")}>
+                    <strong>My profile</strong>
+                    <small>Photo, signature, contact</small>
+                  </button>
+                  <button type="button" className="ap-dropdown-item" onClick={() => go("settings", "Security settings (demo)")}>
+                    <strong>Security</strong>
+                    <small>Password, 2FA, sessions</small>
+                  </button>
+                  <button type="button" className="ap-dropdown-item" onClick={() => showToast("Demo: Help center")}>
+                    <strong>Help</strong>
+                    <small>Guides & support</small>
+                  </button>
+                  <div className="ap-dropdown-divider" />
+                  <Link href="/admin/login" className="ap-dropdown-item" onClick={() => setProfileOpen(false)}>
+                    <strong>Sign out</strong>
+                  </Link>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </header>
+
+        <div className="ap-content">
+          <div className="ap-welcome-row">
+            <div>
+              <h1>{pageTitle}</h1>
+              <p>{pageSub}</p>
+            </div>
+            <div className="ap-dropdown-wrap ap-quick-wrap" ref={quickRef}>
+              <button
+                type="button"
+                className="ap-btn-quick"
+                aria-expanded={quickOpen}
+                onClick={() => {
+                  setQuickOpen((v) => !v);
+                  setNotifyOpen(false);
+                  setProfileOpen(false);
+                }}
+              >
+                <IconBolt />
+                Quick Actions
+                <IconChevron className="chev" style={{ transform: quickOpen ? "rotate(270deg)" : "rotate(90deg)" }} />
+              </button>
+              {quickOpen ? (
+                <div className="ap-dropdown-panel ap-dropdown-left">
+                  <div className="ap-dropdown-head">Shortcuts</div>
+                  <button type="button" className="ap-dropdown-item" onClick={() => go("fees", "Record payment (demo)")}>
+                    <strong>Record fee payment</strong>
+                    <small>Receipt & ledger</small>
+                  </button>
+                  <button type="button" className="ap-dropdown-item" onClick={() => go("notices", "Compose notice (demo)")}>
+                    <strong>Publish notice</strong>
+                    <small>Staff / parents / students</small>
+                  </button>
+                  <button type="button" className="ap-dropdown-item" onClick={() => go("teachers", "Open staff directory (demo)")}>
+                    <strong>Open staff directory</strong>
+                    <small>Faculty & assignments</small>
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
 
-          {error ? <div className="ap-banner error">{error}</div> : null}
-          {notice ? <div className="ap-banner ok">{notice}</div> : null}
+          {activeNav === "dashboard" ? (
+            <>
+              <section className="ap-kpi-grid" aria-label="Key metrics">
+                {kpi.map((card) => (
+                  <article key={card.label} className="ap-kpi">
+                    <label>{card.label}</label>
+                    <strong>{card.value}</strong>
+                    <small className={card.trend === "up" ? "up" : "down"}>{(card as { label: string; value: string; sub?: string; delta?: string; trend: "up" | "down" }).sub ?? (card as { delta?: string }).delta ?? ""}</small>
+                  </article>
+                ))}
+              </section>
 
-          {loading || !dashboard ? (
-            <div className="ap-card">Loading admin dashboard…</div>
-          ) : (
-            <div className="ap-grid">
-              {dashboard.kpis.map((item) => (
-                <div key={item.label} className="ap-card ap-span-3 ap-kpi">
-                  <span>{item.label}</span>
-                  <strong>{item.value}</strong>
-                  <div className="ap-muted">{item.sub}</div>
-                </div>
-              ))}
-
-              <div className="ap-card ap-span-6">
-                <h2>Recent Attendance</h2>
-                <div className="ap-list">
-                  {dashboard.recentAttendance.map((item) => (
-                    <div key={`${item.className}-${item.date}`} className="ap-item">
-                      <strong>{item.className} · {item.date}</strong>
-                      <small>{item.presentCount} present, {item.absentCount} absent · {item.teacherName}</small>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="ap-card ap-span-6">
-                <h2>Recent Admissions</h2>
-                <div className="ap-list">
-                  {dashboard.recentAdmissions.map((item) => (
-                    <div key={item.id} className="ap-item">
-                      <strong>{item.studentName}</strong>
-                      <small>{item.classApplied || "Class not set"} · {item.parentName} · {item.phone}</small>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="ap-card ap-span-6">
-                <h2>Create or Update Student</h2>
-                <div className="ap-form two">
-                  <input placeholder="Student ID" value={studentForm.studentId} onChange={(e) => setStudentForm((form) => ({ ...form, studentId: e.target.value }))} />
-                  <input placeholder="Full name" value={studentForm.fullName} onChange={(e) => setStudentForm((form) => ({ ...form, fullName: e.target.value }))} />
-                  <input placeholder="Class" value={studentForm.className} onChange={(e) => setStudentForm((form) => ({ ...form, className: e.target.value }))} />
-                  <input placeholder="Section" value={studentForm.section} onChange={(e) => setStudentForm((form) => ({ ...form, section: e.target.value }))} />
-                  <input placeholder="Roll number" value={studentForm.rollNo} onChange={(e) => setStudentForm((form) => ({ ...form, rollNo: e.target.value }))} />
-                  <input placeholder="Portal password" value={studentForm.password} onChange={(e) => setStudentForm((form) => ({ ...form, password: e.target.value }))} />
-                  <input placeholder="Father name" value={studentForm.fatherName} onChange={(e) => setStudentForm((form) => ({ ...form, fatherName: e.target.value }))} />
-                  <input placeholder="Father phone" value={studentForm.fatherPhone} onChange={(e) => setStudentForm((form) => ({ ...form, fatherPhone: e.target.value }))} />
-                  <input placeholder="Mother name" value={studentForm.motherName} onChange={(e) => setStudentForm((form) => ({ ...form, motherName: e.target.value }))} />
-                  <input placeholder="Mother phone" value={studentForm.motherPhone} onChange={(e) => setStudentForm((form) => ({ ...form, motherPhone: e.target.value }))} />
-                </div>
-                <div style={{ marginTop: "1rem" }}>
-                  <button type="button" className="ap-btn primary" disabled={saving === "Student"} onClick={() => void saveStudent()}>
-                    {saving === "Student" ? "Saving…" : "Save Student"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="ap-card ap-span-6">
-                <h2>Create or Update Teacher</h2>
-                <div className="ap-form two">
-                  <input placeholder="Teacher ID" value={teacherForm.teacherId} onChange={(e) => setTeacherForm((form) => ({ ...form, teacherId: e.target.value }))} />
-                  <input placeholder="Teacher name" value={teacherForm.name} onChange={(e) => setTeacherForm((form) => ({ ...form, name: e.target.value }))} />
-                  <input placeholder="Subject" value={teacherForm.subject} onChange={(e) => setTeacherForm((form) => ({ ...form, subject: e.target.value }))} />
-                  <input placeholder="Qualification" value={teacherForm.qualification} onChange={(e) => setTeacherForm((form) => ({ ...form, qualification: e.target.value }))} />
-                  <input type="date" value={teacherForm.joinDate} onChange={(e) => setTeacherForm((form) => ({ ...form, joinDate: e.target.value }))} />
-                  <input placeholder="Phone" value={teacherForm.phone} onChange={(e) => setTeacherForm((form) => ({ ...form, phone: e.target.value }))} />
-                  <input placeholder="Password" value={teacherForm.password} onChange={(e) => setTeacherForm((form) => ({ ...form, password: e.target.value }))} />
-                  <input placeholder="Assigned classes, comma separated" value={teacherForm.assignedClasses} onChange={(e) => setTeacherForm((form) => ({ ...form, assignedClasses: e.target.value }))} />
-                </div>
-                <div style={{ marginTop: "1rem" }}>
-                  <button type="button" className="ap-btn primary" disabled={saving === "Teacher"} onClick={() => void saveTeacher()}>
-                    {saving === "Teacher" ? "Saving…" : "Save Teacher"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="ap-card ap-span-5">
-                <h2>Fee Management</h2>
-                <div className="ap-form">
-                  <select value={feeForm.studentId} onChange={(e) => setFeeForm((form) => ({ ...form, studentId: e.target.value }))}>
-                    <option value="">Select student</option>
-                    {dashboard.students.map((student) => (
-                      <option key={student.studentId} value={student.studentId}>{student.fullName} · {student.studentId}</option>
-                    ))}
-                  </select>
-                  <select value={feeForm.currentTermStatus} onChange={(e) => setFeeForm((form) => ({ ...form, currentTermStatus: e.target.value }))}>
-                    <option value="Pending">Pending</option>
-                    <option value="Paid">Paid</option>
-                    <option value="Partial">Partial</option>
-                  </select>
-                  <input placeholder="Current term note" value={feeForm.currentTermNote} onChange={(e) => setFeeForm((form) => ({ ...form, currentTermNote: e.target.value }))} />
-                  <input placeholder="Next due amount" value={feeForm.nextDueAmount} onChange={(e) => setFeeForm((form) => ({ ...form, nextDueAmount: e.target.value }))} />
-                  <input placeholder="Next due label" value={feeForm.nextDueLabel} onChange={(e) => setFeeForm((form) => ({ ...form, nextDueLabel: e.target.value }))} />
-                  <input placeholder="History period (optional)" value={feeForm.historyPeriod} onChange={(e) => setFeeForm((form) => ({ ...form, historyPeriod: e.target.value }))} />
-                  <input placeholder="History amount" value={feeForm.historyAmount} onChange={(e) => setFeeForm((form) => ({ ...form, historyAmount: e.target.value }))} />
-                  <select value={feeForm.historyStatus} onChange={(e) => setFeeForm((form) => ({ ...form, historyStatus: e.target.value }))}>
-                    <option value="Pending">Pending</option>
-                    <option value="Paid">Paid</option>
-                  </select>
-                </div>
-                <div style={{ marginTop: "1rem" }}>
-                  <button type="button" className="ap-btn primary" disabled={saving === "Fees"} onClick={() => void saveFees()}>
-                    {saving === "Fees" ? "Saving…" : "Update Fees"}
-                  </button>
-                </div>
-                {selectedStudent ? (
-                  <div className="ap-item" style={{ marginTop: "1rem" }}>
-                    <strong>{selectedStudent.fullName}</strong>
-                    <small>Current status: {selectedStudent.fees?.currentTermStatus ?? "Not set"}</small>
+              <section className="ap-mid-grid">
+                <article className="ap-panel">
+                  <div className="ap-panel-head">
+                    <h3>Attendance Overview</h3>
+                    <select
+                      className="ap-filter"
+                      aria-label="Time range"
+                      value={attendanceRange}
+                      onChange={(e) => {
+                        const v = e.target.value === "year" ? "year" : "month";
+                        setAttendanceRange(v);
+                        showToast(v === "month" ? "Showing: This month (demo)" : "Showing: This year (demo)");
+                      }}
+                    >
+                      <option value="month">This Month</option>
+                      <option value="year">This Year</option>
+                    </select>
                   </div>
-                ) : null}
-              </div>
-
-              <div className="ap-card ap-span-7">
-                <h2>Timetable Manager</h2>
-                <div className="ap-form three">
-                  <input placeholder="Class" value={timetableForm.className} onChange={(e) => setTimetableForm((form) => ({ ...form, className: e.target.value }))} />
-                  <input placeholder="Period" value={timetableForm.period} onChange={(e) => setTimetableForm((form) => ({ ...form, period: e.target.value }))} />
-                  <input placeholder="Subject" value={timetableForm.subject} onChange={(e) => setTimetableForm((form) => ({ ...form, subject: e.target.value }))} />
-                  <input placeholder="Time" value={timetableForm.time} onChange={(e) => setTimetableForm((form) => ({ ...form, time: e.target.value }))} />
-                </div>
-                <div style={{ marginTop: "1rem", marginBottom: "1rem" }}>
-                  <button type="button" className="ap-btn primary" disabled={saving === "Timetable"} onClick={() => void saveTimetable()}>
-                    {saving === "Timetable" ? "Saving…" : "Save Timetable Row"}
-                  </button>
-                </div>
-                <table className="ap-table">
-                  <thead>
-                    <tr>
-                      <th>Class</th>
-                      <th>Period</th>
-                      <th>Subject</th>
-                      <th>Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dashboard.timetable.slice(0, 8).map((row) => (
-                      <tr key={row.id}>
-                        <td>{row.className}</td>
-                        <td>{row.period}</td>
-                        <td>{row.subject}</td>
-                        <td>{row.time}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="ap-card ap-span-6">
-                <h2>Broadcast Notice</h2>
-                <div className="ap-form">
-                  <input placeholder="Notice title" value={noticeForm.title} onChange={(e) => setNoticeForm((form) => ({ ...form, title: e.target.value }))} />
-                  <textarea placeholder="Description" value={noticeForm.description} onChange={(e) => setNoticeForm((form) => ({ ...form, description: e.target.value }))} />
-                  <select value={noticeForm.audience} onChange={(e) => setNoticeForm((form) => ({ ...form, audience: e.target.value }))}>
-                    <option value="all">School wide</option>
-                    <option value="class">Specific class</option>
-                  </select>
-                  {noticeForm.audience === "class" ? (
-                    <input placeholder="Class name" value={noticeForm.className} onChange={(e) => setNoticeForm((form) => ({ ...form, className: e.target.value }))} />
-                  ) : null}
-                  <button type="button" className="ap-btn primary" disabled={saving === "Notice"} onClick={() => void saveNotice()}>
-                    {saving === "Notice" ? "Saving…" : "Publish Notice"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="ap-card ap-span-6">
-                <h2>Create Event</h2>
-                <div className="ap-form">
-                  <input placeholder="Event title" value={eventForm.title} onChange={(e) => setEventForm((form) => ({ ...form, title: e.target.value }))} />
-                  <textarea placeholder="Description" value={eventForm.description} onChange={(e) => setEventForm((form) => ({ ...form, description: e.target.value }))} />
-                  <input placeholder="Class name, leave blank for all" value={eventForm.className} onChange={(e) => setEventForm((form) => ({ ...form, className: e.target.value }))} />
-                  <input type="date" value={eventForm.eventDate} onChange={(e) => setEventForm((form) => ({ ...form, eventDate: e.target.value }))} />
-                  <button type="button" className="ap-btn primary" disabled={saving === "Event"} onClick={() => void saveEvent()}>
-                    {saving === "Event" ? "Saving…" : "Publish Event"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="ap-card ap-span-8">
-                <h2>Students Connected to Database</h2>
-                <table className="ap-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Student ID</th>
-                      <th>Class</th>
-                      <th>Fees</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dashboard.students.slice(0, 10).map((student) => (
-                      <tr key={student.studentId}>
-                        <td>{student.fullName}</td>
-                        <td>{student.studentId}</td>
-                        <td>{student.className} {student.section}</td>
-                        <td>{student.fees?.currentTermStatus ?? "Not set"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="ap-card ap-span-4">
-                <h2>Teachers Connected to Database</h2>
-                <div className="ap-list">
-                  {dashboard.teachers.slice(0, 8).map((teacher) => (
-                    <div key={teacher.teacherId} className="ap-item">
-                      <strong>{teacher.name}</strong>
-                      <small>{teacher.teacherId} · {teacher.subject}</small>
-                      <div style={{ marginTop: "0.75rem" }}>
-                        <button
-                          type="button"
-                          className="ap-btn secondary"
-                          disabled={saving === "Teacher Delete"}
-                          onClick={() => void deleteTeacherAccount(teacher.teacherId, teacher.name)}
-                        >
-                          {saving === "Teacher Delete" ? "Deleting…" : "Delete Teacher + Uploaded Data"}
-                        </button>
+                  <p className="ap-search-hint" style={{ marginTop: 0 }}>
+                    {attendanceRange === "month"
+                      ? "Demo: Daily attendance trend for the current month."
+                      : "Demo: Year-to-date consolidated attendance curve."}
+                  </p>
+                  <div className="ap-line-chart">
+                    <AttendanceLineChart />
+                    <div className="ap-chart-hint" title="Tooltip">
+                      94.2% · 8 May
+                    </div>
+                  </div>
+                </article>                <article className="ap-panel">
+                  <div className="ap-panel-head">
+                    <h3>Recent Activities</h3>
+                    <button
+                      type="button"
+                      className="ap-filter"
+                      style={{ cursor: "pointer" }}
+                      onClick={() => {
+                        setShowAllActivity((v) => !v);
+                        showToast(showAllActivity ? "Showing latest 3 activities" : "Showing all demo activities");
+                      }}
+                    >
+                      {showAllActivity ? "Show less" : "View all"}
+                    </button>
+                  </div>
+                  <div className="ap-feed">
+                    {activityList.map((a) => (
+                      <div key={a.title + a.time} className="ap-feed-item">
+                        <div className="ap-feed-icon" style={{ background: a.bg, color: a.color }}>
+                          <a.Icon />
+                        </div>
+                        <div>
+                          <p>{a.title}</p>
+                          <small>{a.detail}</small>
+                        </div>
+                        <time>{a.time}</time>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+                    ))}
+                  </div>
+                </article>
+              </section>
 
-              <div className="ap-card ap-span-6">
-                <h2>Latest Notices and Events</h2>
-                <div className="ap-list">
-                  {dashboard.notices.slice(0, 4).map((item) => (
-                    <div key={item.id} className="ap-item">
-                      <strong>{item.title}</strong>
-                      <small>{item.className || "All classes"} · {item.createdAt}</small>
-                    </div>
-                  ))}
-                  {dashboard.events.slice(0, 4).map((item) => (
-                    <div key={item.id} className="ap-item">
-                      <strong>{item.title}</strong>
-                      <small>{item.className || "All classes"} · {item.eventDate}</small>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <section className="ap-bot-grid">
+                <article className="ap-panel">
+                  <div className="ap-panel-head">
+                    <h3>Student Admission Overview</h3>
+                    <select
+                      className="ap-filter"
+                      aria-label="Year"
+                      defaultValue="2026"
+                      onChange={(e) => showToast(`Admissions: ${e.target.value} (demo)`)}
+                    >
+                      <option value="2026">2026</option>
+                      <option value="2025">2025</option>
+                    </select>
+                  </div>
+                  <div className="ap-bars" role="list">
+                    {admissionBars.map((h, i) => (
+                      <div key={i} className="ap-bar-col" role="listitem">
+                        <div
+                          className="ap-bar"
+                          style={{ height: `${Math.max(12, (h / 80) * 100)}%` }}
+                          title={`${monthLabels[i]}: ${h}`}
+                        />
+                        <span>{monthLabels[i]}</span>
+                      </div>
+                    ))}
+                  </div>
+                </article>
 
-              <div className="ap-card ap-span-6">
-                <h2>Recent Contact Messages</h2>
-                <div className="ap-list">
-                  {dashboard.contacts.slice(0, 5).map((item) => (
-                    <div key={item.id} className="ap-item">
-                      <strong>{item.fullName}</strong>
-                      <small>{item.subject || "General"} · {item.phone || item.email}</small>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+                <article className="ap-panel">
+                  <div className="ap-panel-head">
+                    <h3>Upcoming Events</h3>
+                  </div>
+                  <div className="ap-events">
+                    {events.map((e) => (
+                      <div key={e.title} className="ap-event">
+                        <div className="ap-event-date">
+                          <strong>{e.day}</strong>
+                          <small>{e.mon}</small>
+                        </div>
+                        <div>
+                          <p style={{ margin: 0, fontWeight: 600, fontSize: "0.875rem" }}>{e.title}</p>
+                          <span className={`ap-tag ${e.tagClass}`}>{e.tag}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              </section>
+
+            </>
+          ) : (
+            <AdminDemoView nav={activeNav} toast={showToast} />
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 }
+
+function AttendanceLineChart() {
+  const w = 400;
+  const h = 120;
+  const pad = 8;
+  const pts = [
+    [0, 0.72],
+    [1, 0.68],
+    [2, 0.75],
+    [3, 0.7],
+    [4, 0.82],
+    [5, 0.78],
+    [6, 0.85],
+    [7, 0.88],
+    [8, 0.9],
+    [9, 0.87],
+    [10, 0.91],
+    [11, 0.89],
+    [12, 0.942],
+  ];
+  const toX = (i: number) => pad + (i / 12) * (w - pad * 2);
+  const toY = (v: number) => h - pad - v * (h - pad * 2);
+  const d = pts
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p[0])} ${toY(p[1])}`)
+    .join(" ");
+
+  return (
+    <svg viewBox={`0 0 ${w} ${h + 24}`} preserveAspectRatio="none">
+      {[0.25, 0.5, 0.75].map((t) => (
+        <line key={t} x1={pad} x2={w - pad} y1={toY(t)} y2={toY(t)} stroke="#e2e8f0" strokeWidth="1" />
+      ))}
+      <path
+        d={d}
+        fill="none"
+        stroke="var(--ap-blue)"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx={toX(12)} cy={toY(0.942)} r="5" fill="#fff" stroke="var(--ap-blue)" strokeWidth="2" />
+      <text x={pad} y={h + 18} fill="#64748b" fontSize="10">
+        Apr
+      </text>
+      <text x={w / 2 - 8} y={h + 18} fill="#64748b" fontSize="10">
+        May
+      </text>
+      <text x={w - pad - 14} y={h + 18} fill="#64748b" fontSize="10">
+        Jun
+      </text>
+    </svg>
+  );
+}
+
+function IconLayout() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <rect x="3" y="3" width="7" height="9" rx="1.5" />
+      <rect x="14" y="3" width="7" height="5" rx="1.5" />
+      <rect x="14" y="12" width="7" height="9" rx="1.5" />
+      <rect x="3" y="16" width="7" height="5" rx="1.5" />
+    </svg>
+  );
+}
+
+function IconUsers() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
+function IconTeacher() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M22 10v6M2 10l10-5 10 5-10 5-10-5z" />
+      <path d="M6 12v5c0 2 2 3 6 3s6-1 6-3v-5" />
+    </svg>
+  );
+}
+
+function IconCheck() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+      <polyline points="22 4 12 14.01 9 11.01" />
+    </svg>
+  );
+}
+
+function IconClipboard() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+      <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+    </svg>
+  );
+}
+
+function IconCurrency() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <line x1="12" y1="1" x2="12" y2="23" />
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    </svg>
+  );
+}
+
+function IconWallet() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+      <line x1="1" y1="10" x2="23" y2="10" />
+    </svg>
+  );
+}
+
+function IconCalendar() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  );
+}
+
+function IconBell() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  );
+}
+
+function IconFolder() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function IconGear() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+    </svg>
+  );
+}
+
+function IconPhoto() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <polyline points="21 15 16 10 5 21" />
+    </svg>
+  );
+}
+
+function IconInbox() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+      <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+    </svg>
+  );
+}
+
+function IconSearch() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+
+function IconCalendarSmall() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  );
+}
+
+function IconBellOutline() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  );
+}
+
+function IconChevron({ className, style, ...rest }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      className={className}
+      style={style}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      {...rest}
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+function IconBolt() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z" />
+    </svg>
+  );
+}
+
