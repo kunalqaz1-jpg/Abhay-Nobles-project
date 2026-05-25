@@ -102,34 +102,34 @@ export function TeacherDemoView({ nav, toast, assignedClasses = [], students = [
     }
 
     case "attendance":
-      return <TeacherAttendanceInteractive toast={toast} />;
+      return <TeacherAttendanceInteractive toast={toast} assignedClasses={assignedClasses} />;
 
     case "homework":
       return <TeacherHomeworkInteractive toast={toast} assignedClasses={assignedClasses} />;
 
     case "fees":
-      return <TeacherFeesInteractive toast={toast} />;
+      return <TeacherFeesInteractive toast={toast} assignedClasses={assignedClasses} />;
 
     case "results":
-      return <TeacherResultsInteractive toast={toast} />;
+      return <TeacherResultsInteractive toast={toast} assignedClasses={assignedClasses} />;
 
     case "students":
       return <TeacherStudentsInteractive toast={toast} assignedClasses={assignedClasses} />;
 
     case "timetable":
-      return <TeacherTimetableInteractive toast={toast} />;
+      return <TeacherTimetableInteractive toast={toast} assignedClasses={assignedClasses} />;
 
     case "events":
-      return <TeacherEventsInteractive toast={toast} />;
+      return <TeacherEventsInteractive toast={toast} assignedClasses={assignedClasses} />;
 
     case "notices":
-      return <TeacherNoticesInteractive toast={toast} />;
+      return <TeacherNoticesInteractive toast={toast} assignedClasses={assignedClasses} />;
 
     case "messages":
-      return <TeacherMessagesInteractive toast={toast} />;
+      return <TeacherMessagesInteractive toast={toast} assignedClasses={assignedClasses} />;
 
     case "study-material":
-      return <TeacherStudyMaterialInteractive toast={toast} />;
+      return <TeacherStudyMaterialInteractive toast={toast} assignedClasses={assignedClasses} />;
 
     case "settings":
       return <TeacherSettingsInteractive toast={toast} />;
@@ -189,6 +189,7 @@ type TeacherNotice = {
   title: string;
   description: string;
   audience: string;
+  className?: string;
   createdAt: string;
 };
 
@@ -310,6 +311,10 @@ function mergeClassOptions(students: StudentDirectoryRecord[], extra: string[] =
   return merged.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
 
+function buildSelectableClasses(students: StudentDirectoryRecord[], assignedClasses: string[] = []) {
+  return mergeClassOptions(students, normalizeAssignedClasses(assignedClasses));
+}
+
 function splitClassName(className: string) {
   const [standard = "", section = "A"] = className.split("-");
   return { standard, section };
@@ -332,9 +337,15 @@ function mapStudentDirectoryToTeacherStudents(student: StudentDirectoryRecord[])
   }));
 }
 
-function TeacherEventsInteractive({ toast }: { toast: ToastFn }) {
+function TeacherEventsInteractive({
+  toast,
+  assignedClasses = [],
+}: {
+  toast: ToastFn;
+  assignedClasses?: string[];
+}) {
   const [studentDirectory, setStudentDirectory] = useState<StudentDirectoryRecord[]>(FALLBACK_STUDENTS);
-  const classOptions = ["All Classes", ...mergeClassOptions(studentDirectory)];
+  const classOptions = ["All Classes", ...buildSelectableClasses(studentDirectory, assignedClasses)];
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [className, setClassName] = useState(classOptions[0] ?? "All Classes");
@@ -375,7 +386,7 @@ function TeacherEventsInteractive({ toast }: { toast: ToastFn }) {
     try {
       const payload: EventRecord = {
         id: editingId || `EVT-${Date.now()}`,
-        className,
+        className: className === "All Classes" ? "" : className,
         title: title.trim(),
         description: description.trim(),
         eventDate,
@@ -446,14 +457,14 @@ function TeacherEventsInteractive({ toast }: { toast: ToastFn }) {
               <div className="td-row-between td-row-top">
                 <div>
                   <strong>{item.title}</strong>
-                  <p className="td-muted td-m0">{item.eventDate} · {item.className}</p>
+                  <p className="td-muted td-m0">{item.eventDate} · {item.className || "All Classes"}</p>
                 </div>
                 <button
                   type="button"
                   className="td-link-btn"
                   onClick={() => {
                     setEditingId(item.id);
-                    setClassName(item.className);
+                    setClassName(item.className || "All Classes");
                     setTitle(item.title);
                     setDescription(item.description);
                     setEventDate(item.eventDate);
@@ -472,12 +483,19 @@ function TeacherEventsInteractive({ toast }: { toast: ToastFn }) {
   );
 }
 
-function TeacherNoticesInteractive({ toast }: { toast: ToastFn }) {
+function TeacherNoticesInteractive({
+  toast,
+  assignedClasses = [],
+}: {
+  toast: ToastFn;
+  assignedClasses?: string[];
+}) {
   const [notices, setNotices] = useState<TeacherNotice[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [audience, setAudience] = useState("All Classes");
+  const classOptions = normalizeAssignedClasses(assignedClasses);
 
   const resetForm = () => {
     setEditingId(null);
@@ -500,7 +518,7 @@ function TeacherNoticesInteractive({ toast }: { toast: ToastFn }) {
       id: editingId || "NT-" + Date.now(),
       title: title.trim(),
       description: description.trim(),
-      audience,
+      audience: audience === "All Classes" ? "all" : audience,
       className: audience === "All Classes" ? "" : audience,
       teacherName: getTeacherName(),
       createdAt: new Date().toLocaleString("en-IN", {
@@ -536,7 +554,7 @@ function TeacherNoticesInteractive({ toast }: { toast: ToastFn }) {
             <span>Audience</span>
             <select className="td-select td-input-full" value={audience} onChange={(e) => setAudience(e.target.value)}>
               <option>All Classes</option>
-              {ALLOTTED_CLASSES.map((item) => (
+              {classOptions.map((item) => (
                 <option key={item} value={item}>
                   {item}
                 </option>
@@ -580,7 +598,7 @@ function TeacherNoticesInteractive({ toast }: { toast: ToastFn }) {
                     setEditingId(item.id);
                     setTitle(item.title);
                     setDescription(item.description);
-                    setAudience(item.audience);
+                    setAudience(item.className || item.audience === "all" ? item.className || "All Classes" : item.audience);
                     toast("Editing notice: " + item.title);
                   }}
                 >
@@ -588,7 +606,7 @@ function TeacherNoticesInteractive({ toast }: { toast: ToastFn }) {
                 </button>
               </div>
               <p className="td-m0 td-mt td-body-copy">{item.description}</p>
-              <p className="td-muted td-m0 td-mt">Audience: {item.audience}</p>
+              <p className="td-muted td-m0 td-mt">Audience: {item.className || item.audience === "all" ? item.className || "All Classes" : item.audience}</p>
             </div>
           ))}
         </div>
@@ -597,9 +615,15 @@ function TeacherNoticesInteractive({ toast }: { toast: ToastFn }) {
   );
 }
 
-function TeacherMessagesInteractive({ toast }: { toast: ToastFn }) {
+function TeacherMessagesInteractive({
+  toast,
+  assignedClasses = [],
+}: {
+  toast: ToastFn;
+  assignedClasses?: string[];
+}) {
   const [studentDirectory, setStudentDirectory] = useState<StudentDirectoryRecord[]>(FALLBACK_STUDENTS);
-  const classRosters = buildClassRosters(studentDirectory);
+  const classRosters = buildClassRosters(studentDirectory, normalizeAssignedClasses(assignedClasses));
   const fallbackClass = classRosters[0]?.className ?? DEFAULT_CLASS_OPTIONS[0];
   const [audienceType, setAudienceType] = useState<MessageAudience>("all-students");
   const [selectedClass, setSelectedClass] = useState(fallbackClass);
@@ -773,9 +797,15 @@ function TeacherMessagesInteractive({ toast }: { toast: ToastFn }) {
   );
 }
 
-function TeacherStudyMaterialInteractive({ toast }: { toast: ToastFn }) {
+function TeacherStudyMaterialInteractive({
+  toast,
+  assignedClasses = [],
+}: {
+  toast: ToastFn;
+  assignedClasses?: string[];
+}) {
   const [studentDirectory, setStudentDirectory] = useState<StudentDirectoryRecord[]>(FALLBACK_STUDENTS);
-  const classOptions = mergeClassOptions(studentDirectory);
+  const classOptions = buildSelectableClasses(studentDirectory, assignedClasses);
   const [materials, setMaterials] = useState<StudyMaterial[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -957,9 +987,15 @@ function TeacherStudyMaterialInteractive({ toast }: { toast: ToastFn }) {
   );
 }
 
-function TeacherFeesInteractive({ toast }: { toast: ToastFn }) {
+function TeacherFeesInteractive({
+  toast,
+  assignedClasses = [],
+}: {
+  toast: ToastFn;
+  assignedClasses?: string[];
+}) {
   const [studentDirectory, setStudentDirectory] = useState<StudentDirectoryRecord[]>(FALLBACK_STUDENTS);
-  const classOptions = mergeClassOptions(studentDirectory);
+  const classOptions = buildSelectableClasses(studentDirectory, assignedClasses);
   const [selectedClassName, setSelectedClassName] = useState(classOptions[0] ?? DEFAULT_CLASS_OPTIONS[0]);
   const [feeType, setFeeType] = useState<TeacherFeeRecord["feeType"]>("Term");
   const [examName, setExamName] = useState("Unit Test 1");
@@ -1249,7 +1285,7 @@ function TeacherSettingsInteractive({ toast }: { toast: ToastFn }) {
         <div className="td-field td-mt">
           <span>Assigned Classes</span>
           <div className="td-chip-row">
-            {ALLOTTED_CLASSES.map((item) => (
+            {DEFAULT_CLASS_OPTIONS.map((item) => (
               <label key={item} className="td-chip-option">
                 <input type="checkbox" checked={profile.assignedClasses.includes(item)} onChange={() => toggleAssignedClass(item)} />
                 <span>{item}</span>
@@ -1278,7 +1314,7 @@ type ClassRoster = {
 
 const FALLBACK_STUDENTS: StudentDirectoryRecord[] = [];
 
-function buildClassRosters(students: StudentDirectoryRecord[]): ClassRoster[] {
+function buildClassRosters(students: StudentDirectoryRecord[], extraClasses: string[] = []): ClassRoster[] {
   const grouped = new Map<string, ClassRoster["students"]>();
 
   for (const student of students) {
@@ -1289,6 +1325,12 @@ function buildClassRosters(students: StudentDirectoryRecord[]): ClassRoster[] {
       rollNo: student.rollNo,
     });
     grouped.set(student.className, current);
+  }
+
+  for (const className of extraClasses) {
+    if (!grouped.has(className)) {
+      grouped.set(className, []);
+    }
   }
 
   return Array.from(grouped.entries())
@@ -1303,9 +1345,15 @@ function getToday() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function TeacherAttendanceInteractive({ toast }: { toast: ToastFn }) {
+function TeacherAttendanceInteractive({
+  toast,
+  assignedClasses = [],
+}: {
+  toast: ToastFn;
+  assignedClasses?: string[];
+}) {
   const [studentDirectory, setStudentDirectory] = useState<StudentDirectoryRecord[]>(FALLBACK_STUDENTS);
-  const classRosters = buildClassRosters(studentDirectory);
+  const classRosters = buildClassRosters(studentDirectory, normalizeAssignedClasses(assignedClasses));
   const initialClass = classRosters[0]?.className ?? "X-A";
   const [selectedClass, setSelectedClass] = useState(initialClass);
   const [selectedDate, setSelectedDate] = useState(getToday());
@@ -1346,7 +1394,7 @@ function TeacherAttendanceInteractive({ toast }: { toast: ToastFn }) {
       try {
         const records = await getStudents();
         if (ignore || !records.length) return;
-        const nextRosters = buildClassRosters(records);
+        const nextRosters = buildClassRosters(records, normalizeAssignedClasses(assignedClasses));
         const nextClass = nextRosters[0]?.className ?? "X-A";
 
         setStudentDirectory(records);
@@ -1860,8 +1908,6 @@ type TeacherStudent = {
   performance: "Strong" | "Average" | "At risk";
 };
 
-const ALLOTTED_CLASSES = DEFAULT_CLASS_OPTIONS;
-
 function TeacherStudentsInteractive({
   toast,
   assignedClasses = [],
@@ -2209,9 +2255,15 @@ type TimetableRow = {
   time: string;
 };
 
-function TeacherTimetableInteractive({ toast }: { toast: ToastFn }) {
+function TeacherTimetableInteractive({
+  toast,
+  assignedClasses = [],
+}: {
+  toast: ToastFn;
+  assignedClasses?: string[];
+}) {
   const [studentDirectory, setStudentDirectory] = useState<StudentDirectoryRecord[]>(FALLBACK_STUDENTS);
-  const classOptions = mergeClassOptions(studentDirectory);
+  const classOptions = buildSelectableClasses(studentDirectory, assignedClasses);
   const periodOptions = ["1", "2", "3", "4", "5", "6", "7", "8"];
   const timeOptions = [
     "08:00 AM - 09:00 AM",
@@ -2391,9 +2443,15 @@ function TeacherTimetableInteractive({ toast }: { toast: ToastFn }) {
   );
 }
 
-function TeacherResultsInteractive({ toast }: { toast: ToastFn }) {
+function TeacherResultsInteractive({
+  toast,
+  assignedClasses = [],
+}: {
+  toast: ToastFn;
+  assignedClasses?: string[];
+}) {
   const [studentDirectory, setStudentDirectory] = useState<StudentDirectoryRecord[]>(FALLBACK_STUDENTS);
-  const classOptions = mergeClassOptions(studentDirectory);
+  const classOptions = buildSelectableClasses(studentDirectory, assignedClasses);
   const [selectedClassName, setSelectedClassName] = useState(classOptions[0] ?? DEFAULT_CLASS_OPTIONS[0]);
   const [subject, setSubject] = useState("Mathematics");
   const [examType, setExamType] = useState<ExamType>("yearly");

@@ -167,6 +167,50 @@ function matchesStudentClass(student: IStudent, className?: string, section?: st
   return student.section === section;
 }
 
+function normalizeClassName(value: unknown) {
+  return String(value || "").trim();
+}
+
+function normalizeSection(className: string, section: unknown) {
+  const normalizedSection = String(section || "").trim();
+  return normalizedSection || (className.split("-")[1] ?? "");
+}
+
+function normalizeAudience(value: unknown) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized || normalized === "all classes" || normalized === "all-students") {
+    return "all";
+  }
+  return normalized;
+}
+
+function isSchoolWideAudience(value: unknown) {
+  return normalizeAudience(value) === "all";
+}
+
+function normalizeAttendanceEntries(
+  entries: unknown,
+): Array<{ studentId: string; studentName?: string; status: string; remark?: string }> {
+  if (!Array.isArray(entries)) return [];
+
+  return entries.map((entry) => {
+    const record = entry as {
+      studentId?: unknown;
+      studentName?: unknown;
+      status?: unknown;
+      remark?: unknown;
+    };
+    const normalizedStatus = String(record.status || "").trim().toLowerCase() === "absent" ? "Absent" : "Present";
+
+    return {
+      studentId: String(record.studentId || "").trim(),
+      studentName: record.studentName ? String(record.studentName).trim() : "",
+      status: normalizedStatus,
+      remark: record.remark ? String(record.remark).trim() : "",
+    };
+  });
+}
+
 function parseAssignedClass(assignment: string) {
   const raw = String(assignment || "").trim();
   if (!raw) return { className: "", section: "" };
@@ -197,8 +241,8 @@ function formatAttendanceSummary(
   studentId?: string,
 ) {
   const entries = record.entries ?? [];
-  const presentCount = entries.filter((entry) => entry.status === "Present").length;
-  const absentCount = entries.filter((entry) => entry.status !== "Present").length;
+  const presentCount = entries.filter((entry) => String(entry.status).toLowerCase() === "present").length;
+  const absentCount = entries.length - presentCount;
   const studentEntry = studentId ? entries.find((entry) => entry.studentId === studentId) ?? null : null;
 
   return {
@@ -426,9 +470,17 @@ router.get("/students/:studentId/dashboard", requireAuth(["student"]), async (re
       className: cls,
       $or: [{ targetRollNo: student.rollNo }, { targetRollNo: null }, { targetRollNo: "" }],
     }).sort({ createdTs: -1 }).limit(10),
-    Notice.find().sort({ createdTs: -1 }).limit(10),
+    Notice.find({
+      $or: [
+        { className: cls },
+        { className: "" },
+        { audience: { $in: ["all", "All Classes"] } },
+      ],
+    }).sort({ createdTs: -1 }).limit(10),
     TimetableRow.find({ className: cls }),
-    Event.find().sort({ createdTs: -1 }).limit(10),
+    Event.find({
+      $or: [{ className: cls }, { className: "" }],
+    }).sort({ createdTs: -1 }).limit(10),
     Message.find({
       $or: [
         { className: cls },
@@ -536,7 +588,9 @@ router.get("/teachers/:teacherId/dashboard", requireAuth(["teacher"]), async (re
         { audience: "all" },
       ],
     }).sort({ createdTs: -1 }).limit(20),
-    Message.find({ className: { $in: uniqueClassNames } }).sort({ sentTs: -1 }).limit(20),
+    Message.find({
+      $or: [{ className: { $in: uniqueClassNames } }, { className: "" }],
+    }).sort({ sentTs: -1 }).limit(20),
     StudyMaterial.find({ className: { $in: uniqueClassNames } }).sort({ updatedTs: -1 }).limit(20),
     Event.find({
       $or: [
@@ -722,19 +776,25 @@ router.delete("/teachers/:teacherId", requireAuth(["admin"]), async (req, res) =
 
 router.post("/attendance/class", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { className, date, teacherName, entries } = req.body;
+  const normalizedClassName = normalizeClassName(className);
+  const normalizedEntries = normalizeAttendanceEntries(entries);
 
-  const existing = await AttendanceRecord.findOne({ className, date });
+  if (!normalizedClassName || !date || !teacherName) {
+    return res.status(400).json({ error: "className, date, and teacherName are required" });
+  }
+
+  const existing = await AttendanceRecord.findOne({ className: normalizedClassName, date });
   if (existing) {
     const updated = await AttendanceRecord.findOneAndUpdate(
-      { className, date },
-      { teacherName, entries },
+      { className: normalizedClassName, date },
+      { teacherName, entries: normalizedEntries },
       { new: true }
     );
     const r = updated!;
     return res.json({ className: r.className, date: r.date, teacherName: r.teacherName, updatedAt: r.updatedAt.toISOString(), entries: r.entries });
   }
 
-  const inserted = await AttendanceRecord.create({ className, date, teacherName, entries });
+  const inserted = await AttendanceRecord.create({ className: normalizedClassName, date, teacherName, entries: normalizedEntries });
   return res.json({ className: inserted.className, date: inserted.date, teacherName: inserted.teacherName, updatedAt: inserted.updatedAt.toISOString(), entries: inserted.entries });
 });
 
@@ -825,19 +885,26 @@ router.get("/homework/latest/:className", async (req, res) => {
 
 router.post("/results", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { id, className, section, subject, examType, unitTestNumber, title, fileName, fileData, fileMimeType, targetRollNo, teacherName, createdAt } = req.body;
+  const resultId = String(id || randomUUID());
+  const normalizedClassName = normalizeClassName(className);
+  const normalizedSection = normalizeSection(normalizedClassName, section);
 
-  const existing = await Result.findOne({ resultId: id });
+  if (!normalizedClassName || !subject || !examType || !title || !teacherName) {
+    return res.status(400).json({ error: "className, subject, examType, title, and teacherName are required" });
+  }
+
+  const existing = await Result.findOne({ resultId });
   if (existing) {
     const updated = await Result.findOneAndUpdate(
-      { resultId: id },
-      { className, section, subject, examType, unitTestNumber: unitTestNumber ?? null, title, fileName, fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", targetRollNo: targetRollNo ?? null, teacherName, createdAt },
+      { resultId },
+      { className: normalizedClassName, section: normalizedSection, subject, examType, unitTestNumber: unitTestNumber ?? null, title, fileName: fileName ?? "", fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", targetRollNo: targetRollNo ?? null, teacherName, createdAt: createdAt ?? new Date().toISOString() },
       { new: true }
     );
     const r = updated!;
     return res.json({ id: r.resultId, className: r.className, section: r.section, subject: r.subject, examType: r.examType, unitTestNumber: r.unitTestNumber, title: r.title, fileName: r.fileName, fileData: r.fileData ?? "", fileMimeType: r.fileMimeType ?? "", targetRollNo: r.targetRollNo, teacherName: r.teacherName, createdAt: r.createdAt });
   }
 
-  const inserted = await Result.create({ resultId: id, className, section, subject, examType, unitTestNumber: unitTestNumber ?? null, title, fileName: fileName ?? "", fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", targetRollNo: targetRollNo ?? null, teacherName, createdAt });
+  const inserted = await Result.create({ resultId, className: normalizedClassName, section: normalizedSection, subject, examType, unitTestNumber: unitTestNumber ?? null, title, fileName: fileName ?? "", fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", targetRollNo: targetRollNo ?? null, teacherName, createdAt: createdAt ?? new Date().toISOString() });
   return res.json({ id: inserted.resultId, className: inserted.className, section: inserted.section, subject: inserted.subject, examType: inserted.examType, unitTestNumber: inserted.unitTestNumber, title: inserted.title, fileName: inserted.fileName, fileData: inserted.fileData ?? "", fileMimeType: inserted.fileMimeType ?? "", targetRollNo: inserted.targetRollNo, teacherName: inserted.teacherName, createdAt: inserted.createdAt });
 });
 
@@ -867,19 +934,26 @@ router.get("/notices", async (req, res) => {
 
 router.post("/notices", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { id, title, description, audience, className, teacherName, createdAt } = req.body;
+  const noticeId = String(id || randomUUID());
+  const normalizedAudience = normalizeAudience(audience);
+  const normalizedClassName = isSchoolWideAudience(audience) ? "" : normalizeClassName(className);
 
-  const existing = await Notice.findOne({ noticeId: id });
+  if (!title || !teacherName) {
+    return res.status(400).json({ error: "title and teacherName are required" });
+  }
+
+  const existing = await Notice.findOne({ noticeId });
   if (existing) {
     const updated = await Notice.findOneAndUpdate(
-      { noticeId: id },
-      { title, description, audience, className, teacherName, createdAt },
+      { noticeId },
+      { title, description, audience: normalizedAudience, className: normalizedClassName, teacherName, createdAt: createdAt ?? new Date().toISOString() },
       { new: true }
     );
     const n = updated!;
     return res.json({ id: n.noticeId, title: n.title, description: n.description, audience: n.audience, className: n.className, teacherName: n.teacherName, createdAt: n.createdAt });
   }
 
-  const inserted = await Notice.create({ noticeId: id, title, description, audience: audience ?? "all", className: className ?? "", teacherName, createdAt });
+  const inserted = await Notice.create({ noticeId, title, description, audience: normalizedAudience, className: normalizedClassName, teacherName, createdAt: createdAt ?? new Date().toISOString() });
   return res.json({ id: inserted.noticeId, title: inserted.title, description: inserted.description, audience: inserted.audience, className: inserted.className, teacherName: inserted.teacherName, createdAt: inserted.createdAt });
 });
 
@@ -901,13 +975,20 @@ router.get("/messages", async (req, res) => {
 
 router.post("/messages", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { id, subject, body, audience, className, studentId, studentName, teacherName, sentAt } = req.body;
+  const messageId = String(id || randomUUID());
+  const normalizedAudience = normalizeAudience(audience);
+  const normalizedClassName = isSchoolWideAudience(audience) ? "" : normalizeClassName(className);
 
-  const existing = await Message.findOne({ messageId: id });
-  if (existing) {
-    return res.json({ id, subject, body, audience, className, studentId, studentName, teacherName, sentAt });
+  if (!subject || !body || !teacherName) {
+    return res.status(400).json({ error: "subject, body, and teacherName are required" });
   }
 
-  const inserted = await Message.create({ messageId: id, subject, body, audience: audience ?? "class", className: className ?? "", studentId: studentId ?? null, studentName: studentName ?? null, teacherName, sentAt });
+  const existing = await Message.findOne({ messageId });
+  if (existing) {
+    return res.json({ id: messageId, subject, body, audience: normalizedAudience, className: normalizedClassName, studentId, studentName, teacherName, sentAt: sentAt ?? new Date().toISOString() });
+  }
+
+  const inserted = await Message.create({ messageId, subject, body, audience: normalizedAudience === "all" ? "all" : normalizedAudience || "class", className: normalizedClassName, studentId: studentId ?? null, studentName: studentName ?? null, teacherName, sentAt: sentAt ?? new Date().toISOString() });
   return res.json({ id: inserted.messageId, subject: inserted.subject, body: inserted.body, audience: inserted.audience, className: inserted.className, studentId: inserted.studentId, studentName: inserted.studentName, teacherName: inserted.teacherName, sentAt: inserted.sentAt });
 });
 
@@ -926,19 +1007,25 @@ router.get("/materials", async (req, res) => {
 
 router.post("/materials", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { id, title, className, fileName, fileData, fileMimeType, videoUrl, resourceType, teacherName, updatedAt } = req.body;
+  const materialId = String(id || randomUUID());
+  const normalizedClassName = normalizeClassName(className);
 
-  const existing = await StudyMaterial.findOne({ materialId: id });
+  if (!title || !normalizedClassName || !resourceType) {
+    return res.status(400).json({ error: "title, className, and resourceType are required" });
+  }
+
+  const existing = await StudyMaterial.findOne({ materialId });
   if (existing) {
     const updated = await StudyMaterial.findOneAndUpdate(
-      { materialId: id },
-      { title, className, fileName, fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", videoUrl, resourceType, teacherName: teacherName ?? "", updatedAt },
+      { materialId },
+      { title, className: normalizedClassName, fileName, fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", videoUrl, resourceType, teacherName: teacherName ?? "", updatedAt: updatedAt ?? new Date().toISOString() },
       { new: true }
     );
     const m = updated!;
     return res.json({ id: m.materialId, title: m.title, className: m.className, fileName: m.fileName, fileData: m.fileData ?? "", fileMimeType: m.fileMimeType ?? "", videoUrl: m.videoUrl, resourceType: m.resourceType, teacherName: m.teacherName, updatedAt: m.updatedAt });
   }
 
-  const inserted = await StudyMaterial.create({ materialId: id, title, className, fileName: fileName ?? "", fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", videoUrl: videoUrl ?? "", resourceType, teacherName: teacherName ?? "", updatedAt });
+  const inserted = await StudyMaterial.create({ materialId, title, className: normalizedClassName, fileName: fileName ?? "", fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", videoUrl: videoUrl ?? "", resourceType, teacherName: teacherName ?? "", updatedAt: updatedAt ?? new Date().toISOString() });
   return res.json({ id: inserted.materialId, title: inserted.title, className: inserted.className, fileName: inserted.fileName, fileData: inserted.fileData ?? "", fileMimeType: inserted.fileMimeType ?? "", videoUrl: inserted.videoUrl, resourceType: inserted.resourceType, teacherName: inserted.teacherName, updatedAt: inserted.updatedAt });
 });
 
@@ -985,19 +1072,25 @@ router.get("/events", async (req, res) => {
 
 router.post("/events", requireAuth(["teacher", "admin"]), async (req, res) => {
   const { id, className, title, description, eventDate, teacherName, createdAt } = req.body;
+  const eventId = String(id || randomUUID());
+  const normalizedClassName = normalizeClassName(className);
 
-  const existing = await Event.findOne({ eventId: id });
+  if (!title || !eventDate || !teacherName) {
+    return res.status(400).json({ error: "title, eventDate, and teacherName are required" });
+  }
+
+  const existing = await Event.findOne({ eventId });
   if (existing) {
     const updated = await Event.findOneAndUpdate(
-      { eventId: id },
-      { className, title, description, eventDate, teacherName, createdAt },
+      { eventId },
+      { className: normalizedClassName, title, description, eventDate, teacherName, createdAt: createdAt ?? new Date().toISOString() },
       { new: true }
     );
     const e = updated!;
     return res.json({ id: e.eventId, className: e.className, title: e.title, description: e.description, eventDate: e.eventDate, teacherName: e.teacherName, createdAt: e.createdAt });
   }
 
-  const inserted = await Event.create({ eventId: id, className: className ?? "", title, description: description ?? "", eventDate, teacherName, createdAt });
+  const inserted = await Event.create({ eventId, className: normalizedClassName, title, description: description ?? "", eventDate, teacherName, createdAt: createdAt ?? new Date().toISOString() });
   return res.json({ id: inserted.eventId, className: inserted.className, title: inserted.title, description: inserted.description, eventDate: inserted.eventDate, teacherName: inserted.teacherName, createdAt: inserted.createdAt });
 });
 
