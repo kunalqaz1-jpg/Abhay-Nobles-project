@@ -211,6 +211,11 @@ function normalizeAttendanceEntries(
   });
 }
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
 function parseAssignedClass(assignment: string) {
   const raw = String(assignment || "").trim();
   if (!raw) return { className: "", section: "" };
@@ -825,53 +830,58 @@ router.get("/attendance/student/:studentId/latest", async (req, res) => {
 // ─── HOMEWORK ─────────────────────────────────────────────────────────────────
 
 router.post("/homework", requireAuth(["teacher", "admin"]), async (req, res) => {
-  const { id, className, section, subject, title, description, dueDate, fileName, fileData, fileMimeType, teacherName, createdAt } = req.body;
-  const homeworkId = String(id || randomUUID());
-  const normalizedClassName = String(className || "").trim();
-  const normalizedSection = String(section || "").trim() || (normalizedClassName.split("-")[1] ?? "");
+  try {
+    const { id, className, section, subject, title, description, dueDate, fileName, fileData, fileMimeType, teacherName, createdAt } = req.body;
+    const homeworkId = String(id || randomUUID());
+    const normalizedClassName = String(className || "").trim();
+    const normalizedSection = String(section || "").trim() || (normalizedClassName.split("-")[1] ?? "");
 
-  if (!normalizedClassName || !subject || !title || !dueDate || !teacherName) {
-    return res.status(400).json({ error: "className, subject, title, dueDate, and teacherName are required" });
+    if (!normalizedClassName || !subject || !title || !dueDate || !teacherName) {
+      return res.status(400).json({ error: "className, subject, title, dueDate, and teacherName are required" });
+    }
+
+    const existing = await Homework.findOne({ hwId: homeworkId });
+    if (existing) {
+      const updated = await Homework.findOneAndUpdate(
+        { hwId: homeworkId },
+        {
+          className: normalizedClassName,
+          section: normalizedSection,
+          subject,
+          title,
+          description,
+          dueDate,
+          fileName,
+          fileData: fileData ?? "",
+          fileMimeType: fileMimeType ?? "",
+          teacherName,
+          createdAt: createdAt ?? new Date().toISOString(),
+        },
+        { new: true }
+      );
+      const h = updated!;
+      return res.json({ id: h.hwId, className: h.className, section: h.section, subject: h.subject, title: h.title, description: h.description, dueDate: h.dueDate, fileName: h.fileName, fileData: h.fileData ?? "", fileMimeType: h.fileMimeType ?? "", teacherName: h.teacherName, createdAt: h.createdAt });
+    }
+
+    const inserted = await Homework.create({
+      hwId: homeworkId,
+      className: normalizedClassName,
+      section: normalizedSection,
+      subject,
+      title,
+      description,
+      dueDate,
+      fileName,
+      fileData: fileData ?? "",
+      fileMimeType: fileMimeType ?? "",
+      teacherName,
+      createdAt: createdAt ?? new Date().toISOString(),
+    });
+    return res.json({ id: inserted.hwId, className: inserted.className, section: inserted.section, subject: inserted.subject, title: inserted.title, description: inserted.description, dueDate: inserted.dueDate, fileName: inserted.fileName, fileData: inserted.fileData ?? "", fileMimeType: inserted.fileMimeType ?? "", teacherName: inserted.teacherName, createdAt: inserted.createdAt });
+  } catch (error) {
+    console.error("[POST /homework] failed", error);
+    return res.status(500).json({ error: getErrorMessage(error) });
   }
-
-  const existing = await Homework.findOne({ hwId: homeworkId });
-  if (existing) {
-    const updated = await Homework.findOneAndUpdate(
-      { hwId: homeworkId },
-      {
-        className: normalizedClassName,
-        section: normalizedSection,
-        subject,
-        title,
-        description,
-        dueDate,
-        fileName,
-        fileData: fileData ?? "",
-        fileMimeType: fileMimeType ?? "",
-        teacherName,
-        createdAt: createdAt ?? new Date().toISOString(),
-      },
-      { new: true }
-    );
-    const h = updated!;
-    return res.json({ id: h.hwId, className: h.className, section: h.section, subject: h.subject, title: h.title, description: h.description, dueDate: h.dueDate, fileName: h.fileName, fileData: h.fileData ?? "", fileMimeType: h.fileMimeType ?? "", teacherName: h.teacherName, createdAt: h.createdAt });
-  }
-
-  const inserted = await Homework.create({
-    hwId: homeworkId,
-    className: normalizedClassName,
-    section: normalizedSection,
-    subject,
-    title,
-    description,
-    dueDate,
-    fileName,
-    fileData: fileData ?? "",
-    fileMimeType: fileMimeType ?? "",
-    teacherName,
-    createdAt: createdAt ?? new Date().toISOString(),
-  });
-  return res.json({ id: inserted.hwId, className: inserted.className, section: inserted.section, subject: inserted.subject, title: inserted.title, description: inserted.description, dueDate: inserted.dueDate, fileName: inserted.fileName, fileData: inserted.fileData ?? "", fileMimeType: inserted.fileMimeType ?? "", teacherName: inserted.teacherName, createdAt: inserted.createdAt });
 });
 
 router.get("/homework/latest/:className", async (req, res) => {
@@ -884,28 +894,33 @@ router.get("/homework/latest/:className", async (req, res) => {
 // ─── RESULTS ─────────────────────────────────────────────────────────────────
 
 router.post("/results", requireAuth(["teacher", "admin"]), async (req, res) => {
-  const { id, className, section, subject, examType, unitTestNumber, title, fileName, fileData, fileMimeType, targetRollNo, teacherName, createdAt } = req.body;
-  const resultId = String(id || randomUUID());
-  const normalizedClassName = normalizeClassName(className);
-  const normalizedSection = normalizeSection(normalizedClassName, section);
+  try {
+    const { id, className, section, subject, examType, unitTestNumber, title, fileName, fileData, fileMimeType, targetRollNo, teacherName, createdAt } = req.body;
+    const resultId = String(id || randomUUID());
+    const normalizedClassName = normalizeClassName(className);
+    const normalizedSection = normalizeSection(normalizedClassName, section);
 
-  if (!normalizedClassName || !subject || !examType || !title || !teacherName) {
-    return res.status(400).json({ error: "className, subject, examType, title, and teacherName are required" });
+    if (!normalizedClassName || !subject || !examType || !title || !teacherName) {
+      return res.status(400).json({ error: "className, subject, examType, title, and teacherName are required" });
+    }
+
+    const existing = await Result.findOne({ resultId });
+    if (existing) {
+      const updated = await Result.findOneAndUpdate(
+        { resultId },
+        { className: normalizedClassName, section: normalizedSection, subject, examType, unitTestNumber: unitTestNumber ?? null, title, fileName: fileName ?? "", fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", targetRollNo: targetRollNo ?? null, teacherName, createdAt: createdAt ?? new Date().toISOString() },
+        { new: true }
+      );
+      const r = updated!;
+      return res.json({ id: r.resultId, className: r.className, section: r.section, subject: r.subject, examType: r.examType, unitTestNumber: r.unitTestNumber, title: r.title, fileName: r.fileName, fileData: r.fileData ?? "", fileMimeType: r.fileMimeType ?? "", targetRollNo: r.targetRollNo, teacherName: r.teacherName, createdAt: r.createdAt });
+    }
+
+    const inserted = await Result.create({ resultId, className: normalizedClassName, section: normalizedSection, subject, examType, unitTestNumber: unitTestNumber ?? null, title, fileName: fileName ?? "", fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", targetRollNo: targetRollNo ?? null, teacherName, createdAt: createdAt ?? new Date().toISOString() });
+    return res.json({ id: inserted.resultId, className: inserted.className, section: inserted.section, subject: inserted.subject, examType: inserted.examType, unitTestNumber: inserted.unitTestNumber, title: inserted.title, fileName: inserted.fileName, fileData: inserted.fileData ?? "", fileMimeType: inserted.fileMimeType ?? "", targetRollNo: inserted.targetRollNo, teacherName: inserted.teacherName, createdAt: inserted.createdAt });
+  } catch (error) {
+    console.error("[POST /results] failed", error);
+    return res.status(500).json({ error: getErrorMessage(error) });
   }
-
-  const existing = await Result.findOne({ resultId });
-  if (existing) {
-    const updated = await Result.findOneAndUpdate(
-      { resultId },
-      { className: normalizedClassName, section: normalizedSection, subject, examType, unitTestNumber: unitTestNumber ?? null, title, fileName: fileName ?? "", fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", targetRollNo: targetRollNo ?? null, teacherName, createdAt: createdAt ?? new Date().toISOString() },
-      { new: true }
-    );
-    const r = updated!;
-    return res.json({ id: r.resultId, className: r.className, section: r.section, subject: r.subject, examType: r.examType, unitTestNumber: r.unitTestNumber, title: r.title, fileName: r.fileName, fileData: r.fileData ?? "", fileMimeType: r.fileMimeType ?? "", targetRollNo: r.targetRollNo, teacherName: r.teacherName, createdAt: r.createdAt });
-  }
-
-  const inserted = await Result.create({ resultId, className: normalizedClassName, section: normalizedSection, subject, examType, unitTestNumber: unitTestNumber ?? null, title, fileName: fileName ?? "", fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", targetRollNo: targetRollNo ?? null, teacherName, createdAt: createdAt ?? new Date().toISOString() });
-  return res.json({ id: inserted.resultId, className: inserted.className, section: inserted.section, subject: inserted.subject, examType: inserted.examType, unitTestNumber: inserted.unitTestNumber, title: inserted.title, fileName: inserted.fileName, fileData: inserted.fileData ?? "", fileMimeType: inserted.fileMimeType ?? "", targetRollNo: inserted.targetRollNo, teacherName: inserted.teacherName, createdAt: inserted.createdAt });
 });
 
 router.get("/results/latest", async (req, res) => {
@@ -933,28 +948,33 @@ router.get("/notices", async (req, res) => {
 });
 
 router.post("/notices", requireAuth(["teacher", "admin"]), async (req, res) => {
-  const { id, title, description, audience, className, teacherName, createdAt } = req.body;
-  const noticeId = String(id || randomUUID());
-  const normalizedAudience = normalizeAudience(audience);
-  const normalizedClassName = isSchoolWideAudience(audience) ? "" : normalizeClassName(className);
+  try {
+    const { id, title, description, audience, className, teacherName, createdAt } = req.body;
+    const noticeId = String(id || randomUUID());
+    const normalizedAudience = normalizeAudience(audience);
+    const normalizedClassName = isSchoolWideAudience(audience) ? "" : normalizeClassName(className);
 
-  if (!title || !teacherName) {
-    return res.status(400).json({ error: "title and teacherName are required" });
+    if (!title || !teacherName) {
+      return res.status(400).json({ error: "title and teacherName are required" });
+    }
+
+    const existing = await Notice.findOne({ noticeId });
+    if (existing) {
+      const updated = await Notice.findOneAndUpdate(
+        { noticeId },
+        { title, description, audience: normalizedAudience, className: normalizedClassName, teacherName, createdAt: createdAt ?? new Date().toISOString() },
+        { new: true }
+      );
+      const n = updated!;
+      return res.json({ id: n.noticeId, title: n.title, description: n.description, audience: n.audience, className: n.className, teacherName: n.teacherName, createdAt: n.createdAt });
+    }
+
+    const inserted = await Notice.create({ noticeId, title, description, audience: normalizedAudience, className: normalizedClassName, teacherName, createdAt: createdAt ?? new Date().toISOString() });
+    return res.json({ id: inserted.noticeId, title: inserted.title, description: inserted.description, audience: inserted.audience, className: inserted.className, teacherName: inserted.teacherName, createdAt: inserted.createdAt });
+  } catch (error) {
+    console.error("[POST /notices] failed", error);
+    return res.status(500).json({ error: getErrorMessage(error) });
   }
-
-  const existing = await Notice.findOne({ noticeId });
-  if (existing) {
-    const updated = await Notice.findOneAndUpdate(
-      { noticeId },
-      { title, description, audience: normalizedAudience, className: normalizedClassName, teacherName, createdAt: createdAt ?? new Date().toISOString() },
-      { new: true }
-    );
-    const n = updated!;
-    return res.json({ id: n.noticeId, title: n.title, description: n.description, audience: n.audience, className: n.className, teacherName: n.teacherName, createdAt: n.createdAt });
-  }
-
-  const inserted = await Notice.create({ noticeId, title, description, audience: normalizedAudience, className: normalizedClassName, teacherName, createdAt: createdAt ?? new Date().toISOString() });
-  return res.json({ id: inserted.noticeId, title: inserted.title, description: inserted.description, audience: inserted.audience, className: inserted.className, teacherName: inserted.teacherName, createdAt: inserted.createdAt });
 });
 
 // ─── MESSAGES ────────────────────────────────────────────────────────────────
@@ -974,22 +994,27 @@ router.get("/messages", async (req, res) => {
 });
 
 router.post("/messages", requireAuth(["teacher", "admin"]), async (req, res) => {
-  const { id, subject, body, audience, className, studentId, studentName, teacherName, sentAt } = req.body;
-  const messageId = String(id || randomUUID());
-  const normalizedAudience = normalizeAudience(audience);
-  const normalizedClassName = isSchoolWideAudience(audience) ? "" : normalizeClassName(className);
+  try {
+    const { id, subject, body, audience, className, studentId, studentName, teacherName, sentAt } = req.body;
+    const messageId = String(id || randomUUID());
+    const normalizedAudience = normalizeAudience(audience);
+    const normalizedClassName = isSchoolWideAudience(audience) ? "" : normalizeClassName(className);
 
-  if (!subject || !body || !teacherName) {
-    return res.status(400).json({ error: "subject, body, and teacherName are required" });
+    if (!subject || !body || !teacherName) {
+      return res.status(400).json({ error: "subject, body, and teacherName are required" });
+    }
+
+    const existing = await Message.findOne({ messageId });
+    if (existing) {
+      return res.json({ id: messageId, subject, body, audience: normalizedAudience, className: normalizedClassName, studentId, studentName, teacherName, sentAt: sentAt ?? new Date().toISOString() });
+    }
+
+    const inserted = await Message.create({ messageId, subject, body, audience: normalizedAudience === "all" ? "all" : normalizedAudience || "class", className: normalizedClassName, studentId: studentId ?? null, studentName: studentName ?? null, teacherName, sentAt: sentAt ?? new Date().toISOString() });
+    return res.json({ id: inserted.messageId, subject: inserted.subject, body: inserted.body, audience: inserted.audience, className: inserted.className, studentId: inserted.studentId, studentName: inserted.studentName, teacherName: inserted.teacherName, sentAt: inserted.sentAt });
+  } catch (error) {
+    console.error("[POST /messages] failed", error);
+    return res.status(500).json({ error: getErrorMessage(error) });
   }
-
-  const existing = await Message.findOne({ messageId });
-  if (existing) {
-    return res.json({ id: messageId, subject, body, audience: normalizedAudience, className: normalizedClassName, studentId, studentName, teacherName, sentAt: sentAt ?? new Date().toISOString() });
-  }
-
-  const inserted = await Message.create({ messageId, subject, body, audience: normalizedAudience === "all" ? "all" : normalizedAudience || "class", className: normalizedClassName, studentId: studentId ?? null, studentName: studentName ?? null, teacherName, sentAt: sentAt ?? new Date().toISOString() });
-  return res.json({ id: inserted.messageId, subject: inserted.subject, body: inserted.body, audience: inserted.audience, className: inserted.className, studentId: inserted.studentId, studentName: inserted.studentName, teacherName: inserted.teacherName, sentAt: inserted.sentAt });
 });
 
 // ─── STUDY MATERIALS ─────────────────────────────────────────────────────────
@@ -1006,27 +1031,32 @@ router.get("/materials", async (req, res) => {
 });
 
 router.post("/materials", requireAuth(["teacher", "admin"]), async (req, res) => {
-  const { id, title, className, fileName, fileData, fileMimeType, videoUrl, resourceType, teacherName, updatedAt } = req.body;
-  const materialId = String(id || randomUUID());
-  const normalizedClassName = normalizeClassName(className);
+  try {
+    const { id, title, className, fileName, fileData, fileMimeType, videoUrl, resourceType, teacherName, updatedAt } = req.body;
+    const materialId = String(id || randomUUID());
+    const normalizedClassName = normalizeClassName(className);
 
-  if (!title || !normalizedClassName || !resourceType) {
-    return res.status(400).json({ error: "title, className, and resourceType are required" });
+    if (!title || !normalizedClassName || !resourceType) {
+      return res.status(400).json({ error: "title, className, and resourceType are required" });
+    }
+
+    const existing = await StudyMaterial.findOne({ materialId });
+    if (existing) {
+      const updated = await StudyMaterial.findOneAndUpdate(
+        { materialId },
+        { title, className: normalizedClassName, fileName, fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", videoUrl, resourceType, teacherName: teacherName ?? "", updatedAt: updatedAt ?? new Date().toISOString() },
+        { new: true }
+      );
+      const m = updated!;
+      return res.json({ id: m.materialId, title: m.title, className: m.className, fileName: m.fileName, fileData: m.fileData ?? "", fileMimeType: m.fileMimeType ?? "", videoUrl: m.videoUrl, resourceType: m.resourceType, teacherName: m.teacherName, updatedAt: m.updatedAt });
+    }
+
+    const inserted = await StudyMaterial.create({ materialId, title, className: normalizedClassName, fileName: fileName ?? "", fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", videoUrl: videoUrl ?? "", resourceType, teacherName: teacherName ?? "", updatedAt: updatedAt ?? new Date().toISOString() });
+    return res.json({ id: inserted.materialId, title: inserted.title, className: inserted.className, fileName: inserted.fileName, fileData: inserted.fileData ?? "", fileMimeType: inserted.fileMimeType ?? "", videoUrl: inserted.videoUrl, resourceType: inserted.resourceType, teacherName: inserted.teacherName, updatedAt: inserted.updatedAt });
+  } catch (error) {
+    console.error("[POST /materials] failed", error);
+    return res.status(500).json({ error: getErrorMessage(error) });
   }
-
-  const existing = await StudyMaterial.findOne({ materialId });
-  if (existing) {
-    const updated = await StudyMaterial.findOneAndUpdate(
-      { materialId },
-      { title, className: normalizedClassName, fileName, fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", videoUrl, resourceType, teacherName: teacherName ?? "", updatedAt: updatedAt ?? new Date().toISOString() },
-      { new: true }
-    );
-    const m = updated!;
-    return res.json({ id: m.materialId, title: m.title, className: m.className, fileName: m.fileName, fileData: m.fileData ?? "", fileMimeType: m.fileMimeType ?? "", videoUrl: m.videoUrl, resourceType: m.resourceType, teacherName: m.teacherName, updatedAt: m.updatedAt });
-  }
-
-  const inserted = await StudyMaterial.create({ materialId, title, className: normalizedClassName, fileName: fileName ?? "", fileData: fileData ?? "", fileMimeType: fileMimeType ?? "", videoUrl: videoUrl ?? "", resourceType, teacherName: teacherName ?? "", updatedAt: updatedAt ?? new Date().toISOString() });
-  return res.json({ id: inserted.materialId, title: inserted.title, className: inserted.className, fileName: inserted.fileName, fileData: inserted.fileData ?? "", fileMimeType: inserted.fileMimeType ?? "", videoUrl: inserted.videoUrl, resourceType: inserted.resourceType, teacherName: inserted.teacherName, updatedAt: inserted.updatedAt });
 });
 
 // ─── TIMETABLE ───────────────────────────────────────────────────────────────
@@ -1071,27 +1101,32 @@ router.get("/events", async (req, res) => {
 });
 
 router.post("/events", requireAuth(["teacher", "admin"]), async (req, res) => {
-  const { id, className, title, description, eventDate, teacherName, createdAt } = req.body;
-  const eventId = String(id || randomUUID());
-  const normalizedClassName = normalizeClassName(className);
+  try {
+    const { id, className, title, description, eventDate, teacherName, createdAt } = req.body;
+    const eventId = String(id || randomUUID());
+    const normalizedClassName = normalizeClassName(className);
 
-  if (!title || !eventDate || !teacherName) {
-    return res.status(400).json({ error: "title, eventDate, and teacherName are required" });
+    if (!title || !eventDate || !teacherName) {
+      return res.status(400).json({ error: "title, eventDate, and teacherName are required" });
+    }
+
+    const existing = await Event.findOne({ eventId });
+    if (existing) {
+      const updated = await Event.findOneAndUpdate(
+        { eventId },
+        { className: normalizedClassName, title, description, eventDate, teacherName, createdAt: createdAt ?? new Date().toISOString() },
+        { new: true }
+      );
+      const e = updated!;
+      return res.json({ id: e.eventId, className: e.className, title: e.title, description: e.description, eventDate: e.eventDate, teacherName: e.teacherName, createdAt: e.createdAt });
+    }
+
+    const inserted = await Event.create({ eventId, className: normalizedClassName, title, description: description ?? "", eventDate, teacherName, createdAt: createdAt ?? new Date().toISOString() });
+    return res.json({ id: inserted.eventId, className: inserted.className, title: inserted.title, description: inserted.description, eventDate: inserted.eventDate, teacherName: inserted.teacherName, createdAt: inserted.createdAt });
+  } catch (error) {
+    console.error("[POST /events] failed", error);
+    return res.status(500).json({ error: getErrorMessage(error) });
   }
-
-  const existing = await Event.findOne({ eventId });
-  if (existing) {
-    const updated = await Event.findOneAndUpdate(
-      { eventId },
-      { className: normalizedClassName, title, description, eventDate, teacherName, createdAt: createdAt ?? new Date().toISOString() },
-      { new: true }
-    );
-    const e = updated!;
-    return res.json({ id: e.eventId, className: e.className, title: e.title, description: e.description, eventDate: e.eventDate, teacherName: e.teacherName, createdAt: e.createdAt });
-  }
-
-  const inserted = await Event.create({ eventId, className: normalizedClassName, title, description: description ?? "", eventDate, teacherName, createdAt: createdAt ?? new Date().toISOString() });
-  return res.json({ id: inserted.eventId, className: inserted.className, title: inserted.title, description: inserted.description, eventDate: inserted.eventDate, teacherName: inserted.teacherName, createdAt: inserted.createdAt });
 });
 
 
